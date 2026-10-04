@@ -14809,6 +14809,9 @@ async function loadSettingsTab(tabId) {
       case 'advanced':      html = renderSettingsAdvanced(); break;
       default:              html = '<div class="text-muted" style="padding:40px;text-align:center;">Unknown tab</div>';
     }
+    if (tabId === 'templates') {
+  setTimeout(function() { loadTemplateList('company'); }, 50);
+}
     container.innerHTML = html;
   } catch (e) {
     console.error('Settings tab failed:', tabId, e);
@@ -14932,6 +14935,345 @@ async function saveSettingsGeneral() {
 }
 
 /* === END PART 46A === */
+/* === START PART 46B (Email Config) === */
+function renderSettingsEmail() {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">📧 Brevo (Auto FU Emails)</div>
+      <div class="field">
+        <label>Brevo API Key</label>
+        <input type="password" id="setBrevoKey" placeholder="xkeysib-..." ${dis}>
+        <span class="helper">Used for auto FU emails · 300/day free</span>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Sender Email</label>
+          <input type="email" id="setBrevoEmail" placeholder="sender@domain.com" ${dis}>
+        </div>
+        <div class="field">
+          <label>Sender Name</label>
+          <input type="text" id="setBrevoName" placeholder="Seven Horses" ${dis}>
+        </div>
+      </div>
+      <button class="ghost sm" onclick="testBrevoEmail()" ${dis}>📧 Send Test Email</button>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">📨 EmailJS (Password Reset)</div>
+      <div class="field">
+        <label>Public Key</label>
+        <input type="text" id="setEjsPublic" placeholder="Public key from EmailJS" ${dis}>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Service ID</label>
+          <input type="text" id="setEjsService" placeholder="service_xxx" ${dis}>
+        </div>
+        <div class="field">
+          <label>Template ID</label>
+          <input type="text" id="setEjsTemplate" placeholder="template_xxx" ${dis}>
+        </div>
+      </div>
+      <span class="helper">Used for password reset OTP emails · 200/month free</span>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🔥 Warm-up Schedule</div>
+      <div class="info-row">
+        <span class="info-label">Week 1</span>
+        <span class="info-value">10 emails/day</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Week 2</span>
+        <span class="info-value">25 emails/day</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Week 3</span>
+        <span class="info-value">50 emails/day</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Week 4+</span>
+        <span class="info-value">100 → 300 emails/day</span>
+      </div>
+      <span class="helper">New sender emails should warm up gradually to avoid spam flags</span>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🛡️ Spam Check</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Warning Threshold (words)</label>
+          <input type="number" id="setSpamWarn" value="3" min="1" max="10" ${dis}>
+        </div>
+        <div class="field">
+          <label>Block Threshold (words)</label>
+          <input type="number" id="setSpamBlock" value="5" min="2" max="20" ${dis}>
+        </div>
+      </div>
+      <span class="helper">2-4 spam words → warning · 5+ words → block</span>
+    </div>
+
+    ${isMaster ? `
+      <div class="row" style="gap:8px;margin-top:16px;">
+        <button class="primary" onclick="saveSettingsEmail()">💾 Save Email Config</button>
+      </div>
+    ` : '<div class="card flat" style="margin-top:16px;background:var(--bg-subtle);"><div class="text-muted" style="font-size:12px;">🔒 Read-only — Only MASTER can edit</div></div>'}
+  `;
+}
+
+async function saveSettingsEmail() {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER can save'); return; }
+
+  const data = {
+    brevo: {
+      apiKey: ($id('setBrevoKey') || {}).value || '',
+      senderEmail: ($id('setBrevoEmail') || {}).value || '',
+      senderName: ($id('setBrevoName') || {}).value || ''
+    },
+    emailjs: {
+      publicKey: ($id('setEjsPublic') || {}).value || '',
+      serviceId: ($id('setEjsService') || {}).value || '',
+      templateId: ($id('setEjsTemplate') || {}).value || ''
+    },
+    spamCheck: {
+      warnThreshold: parseInt(($id('setSpamWarn') || {}).value, 10) || 3,
+      blockThreshold: parseInt(($id('setSpamBlock') || {}).value, 10) || 5
+    },
+    updatedAt: Date.now()
+  };
+
+  try {
+    await fbDb.collection('config').doc('email').set(data, { merge: true });
+    logAuditEvent('settings_update', 'config', 'email', '');
+    showToast('success', 'Email config saved');
+  } catch (e) {
+    console.error('Save email failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+async function testBrevoEmail() {
+  const apiKey = ($id('setBrevoKey') || {}).value || '';
+  const senderEmail = ($id('setBrevoEmail') || {}).value || '';
+
+  if (!apiKey || !senderEmail) {
+    showToast('warning', 'Fill API key and sender email first');
+    return;
+  }
+
+  showToast('info', 'Sending test email...');
+
+  try {
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'api-key': apiKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        sender: { email: senderEmail, name: 'Seven Horses Test' },
+        to: [{ email: senderEmail }],
+        subject: '✅ Test from Seven Horses CRM',
+        htmlContent: '<p>Your Brevo configuration is working correctly.</p>'
+      })
+    });
+
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error('Brevo ' + res.status + ': ' + txt);
+    }
+    showToast('success', 'Test email sent! Check inbox');
+  } catch (e) {
+    console.error('Brevo test failed:', e);
+    showToast('error', 'Test failed: ' + e.message);
+  }
+}
+
+/* === END PART 46B === */
+/* === START PART 46C (Email Templates) === */
+function renderSettingsTemplates() {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  const groups = [
+    { id: 'company', label: 'Company (8)' },
+    { id: 'candidate', label: 'Candidate (4)' },
+    { id: 'client', label: 'Client HR (2)' },
+    { id: 'internal', label: 'Internal (3)' },
+    { id: 'common', label: 'Common (3)' }
+  ];
+
+  let groupChips = '';
+  groups.forEach(function(g, i) {
+    groupChips += '<button class="chip clickable ' + (i === 0 ? 'active' : '') + '" data-tgroup="' + g.id + '" onclick="switchTemplateGroup(\'' + g.id + '\')">' + escapeHtml(g.label) + '</button>';
+  });
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">📝 Email Templates</div>
+      <p class="text-muted" style="font-size:12px;margin-bottom:14px;">
+        Edit subject + body for each template. Variables auto-replace: <code>{{company_name}}</code>, <code>{{contact_person}}</code>, <code>{{candidate_name}}</code>, etc.
+      </p>
+
+      <div class="chips-wrap" style="margin-bottom:16px;">
+        ${groupChips}
+      </div>
+
+      <div id="templateListContainer">
+        <div class="loading-block"><div class="spinner"></div></div>
+      </div>
+    </div>
+
+    ${isMaster ? '' : '<div class="card flat" style="background:var(--bg-subtle);"><div class="text-muted" style="font-size:12px;">🔒 Read-only — Only MASTER can edit</div></div>'}
+  `;
+}
+
+let _activeTemplateGroup = 'company';
+
+function switchTemplateGroup(groupId) {
+  _activeTemplateGroup = groupId;
+  $$('[data-tgroup]').forEach(function(el) {
+    el.classList.toggle('active', el.getAttribute('data-tgroup') === groupId);
+  });
+  loadTemplateList(groupId);
+}
+
+async function loadTemplateList(groupId) {
+  const container = $id('templateListContainer');
+  if (!container) return;
+
+  container.innerHTML = '<div class="loading-block"><div class="spinner"></div></div>';
+
+  try {
+    const doc = await fbDb.collection('config').doc('emailTemplates').get();
+    const data = doc.exists ? (doc.data() || {}) : {};
+    const templates = data[groupId] || getDefaultTemplates(groupId);
+
+    if (!templates.length) {
+      container.innerHTML = '<div class="text-muted" style="padding:20px;text-align:center;font-size:12px;">No templates in this group</div>';
+      return;
+    }
+
+    let html = '';
+    templates.forEach(function(t, i) {
+      html += renderTemplateCard(groupId, t, i);
+    });
+    container.innerHTML = html;
+  } catch (e) {
+    console.error('Load templates failed:', e);
+    container.innerHTML = '<div class="text-muted" style="padding:20px;">Failed to load</div>';
+  }
+}
+
+function renderTemplateCard(groupId, t, idx) {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="card flat" style="margin-bottom:12px;padding:14px;">
+      <div class="row between" style="margin-bottom:8px;">
+        <div style="font-size:12px;font-weight:700;color:var(--gold-dark);">
+          ${escapeHtml(t.code || ('T' + (idx + 1)))}
+        </div>
+        <div class="text-muted" style="font-size:10px;">
+          ${t.updatedAt ? 'Updated ' + timeAgo(t.updatedAt) : 'Default'}
+        </div>
+      </div>
+      <div class="field" style="margin-bottom:10px;">
+        <label style="font-size:11px;">Subject</label>
+        <input type="text" value="${escapeAttr(t.subject || '')}"
+          id="tplSubject_${groupId}_${idx}" ${dis}>
+      </div>
+      <div class="field" style="margin-bottom:10px;">
+        <label style="font-size:11px;">Body</label>
+        <textarea rows="5" id="tplBody_${groupId}_${idx}" ${dis}>${escapeHtml(t.body || '')}</textarea>
+      </div>
+      ${isMaster ? `
+        <button class="primary sm" onclick="saveTemplate('${groupId}', ${idx})">💾 Save Template</button>
+      ` : ''}
+    </div>
+  `;
+}
+
+async function saveTemplate(groupId, idx) {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER'); return; }
+
+  const subEl = $id('tplSubject_' + groupId + '_' + idx);
+  const bodyEl = $id('tplBody_' + groupId + '_' + idx);
+  if (!subEl || !bodyEl) return;
+
+  try {
+    const doc = await fbDb.collection('config').doc('emailTemplates').get();
+    const data = doc.exists ? (doc.data() || {}) : {};
+    const templates = data[groupId] || getDefaultTemplates(groupId);
+
+    const old = templates[idx] || {};
+    templates[idx] = Object.assign({}, old, {
+      subject: subEl.value,
+      body: bodyEl.value,
+      updatedAt: Date.now(),
+      updatedBy: STATE.user.uid,
+      versionHistory: (old.versionHistory || []).concat([{
+        subject: old.subject || '',
+        body: old.body || '',
+        savedAt: Date.now(),
+        savedBy: STATE.user.name
+      }]).slice(-5)
+    });
+
+    const updates = {};
+    updates[groupId] = templates;
+
+    await fbDb.collection('config').doc('emailTemplates').set(updates, { merge: true });
+    logAuditEvent('template_update', 'config', groupId + '[' + idx + ']', '');
+    showToast('success', 'Template saved');
+    loadTemplateList(groupId);
+  } catch (e) {
+    console.error('Save template failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+function getDefaultTemplates(groupId) {
+  const defaults = {
+    company: [
+      { code: 'T1', subject: 'Introduction — Seven Horses Manpower', body: 'Dear {{contact_person}},\n\nGreetings from Seven Horses Manpower Solutions.\n\nWe help companies hire quality talent across industries.\n\nRegards,\nSeven Horses Team' },
+      { code: 'T2', subject: 'Quick follow-up', body: 'Hi {{contact_person}},\n\nJust following up on our previous message.\n\nRegards,\nSeven Horses Team' },
+      { code: 'T3', subject: 'Value proposition', body: 'Hi {{contact_person}},\n\nWe can save you 40% on hiring time. Let me explain how.\n\nRegards' },
+      { code: 'T4', subject: 'Requirement discussion', body: 'Hi {{contact_person}},\n\nDo you have any current hiring needs?\n\nRegards' },
+      { code: 'T5', subject: 'Decision time', body: 'Hi {{contact_person}},\n\nCan we schedule a quick call this week?\n\nRegards' },
+      { code: 'T6', subject: 'Limited availability', body: 'Hi {{contact_person}},\n\nOur slots for this month are filling up fast.\n\nRegards' },
+      { code: 'T7', subject: 'Final follow-up', body: 'Hi {{contact_person}},\n\nThis will be my last follow-up. Do let me know if you need anything.\n\nRegards' },
+      { code: 'T8', subject: 'Re-engagement', body: 'Hi {{contact_person}},\n\nIt has been a while. Any new hiring needs?\n\nRegards' }
+    ],
+    candidate: [
+      { code: 'T9', subject: 'Welcome to Seven Horses', body: 'Hi {{candidate_name}},\n\nYour profile is registered with us. We will reach out when a match is found.\n\nRegards' },
+      { code: 'T10', subject: 'Job opportunity matching your profile', body: 'Hi {{candidate_name}},\n\nWe have an opening that matches your profile.\n\nRegards' },
+      { code: 'T11', subject: 'Interview scheduled', body: 'Hi {{candidate_name}},\n\nYour interview is scheduled. Details inside.\n\nRegards' },
+      { code: 'T12', subject: 'Congratulations — Selected!', body: 'Hi {{candidate_name}},\n\nCongratulations! You have been selected.\n\nRegards' }
+    ],
+    client: [
+      { code: 'T13', subject: 'Shortlist for your requirement', body: 'Hi {{contact_person}},\n\nPlease find the shortlist for your requirement.\n\nRegards' },
+      { code: 'T14', subject: 'Invoice + Payment reminder', body: 'Hi {{contact_person}},\n\nGentle reminder for the pending invoice.\n\nRegards' }
+    ],
+    internal: [
+      { code: 'T15', subject: 'Task assigned to you', body: 'Hi {{employee_name}},\n\nA new task has been assigned.\n\nRegards' },
+      { code: 'T16', subject: 'Handover request', body: 'Hi {{employee_name}},\n\nA handover request needs your review.\n\nRegards' },
+      { code: 'T17', subject: 'Daily summary', body: 'Team,\n\nDaily summary attached.\n\nRegards' }
+    ],
+    common: [
+      { code: 'T18', subject: 'Password reset', body: 'Hi,\n\nYour OTP is {{otp}}. Valid for 15 minutes.\n\nRegards' },
+      { code: 'T19', subject: 'Account created', body: 'Hi {{name}},\n\nYour Seven Horses CRM account is ready.\n\nRegards' },
+      { code: 'T20', subject: 'Notification', body: 'You have a new notification in Seven Horses CRM.\n\nRegards' }
+    ]
+  };
+  return defaults[groupId] || [];
+}
+
+/* === END PART 46C === */
     /* === START PART 43 === */
 /* ============================================================
    PAGE: CALENDAR
