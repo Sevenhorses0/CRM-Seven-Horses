@@ -7294,13 +7294,13 @@ function afterRenderPage(page, params) {
       }
     }
   }
-}
 
 if (page === 'settings') {
   setTimeout(function() {
     const current = (typeof SETTINGS_STATE !== 'undefined' && SETTINGS_STATE.activeTab) ? SETTINGS_STATE.activeTab : 'general';
     loadSettingsTab(current);
   }, 100);
+    }
     }
     
 /* === END PART 26 === */
