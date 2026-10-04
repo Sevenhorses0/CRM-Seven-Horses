@@ -15274,6 +15274,2326 @@ function getDefaultTemplates(groupId) {
 }
 
 /* === END PART 46C === */
+/* === START PART 46D (FU Settings) === */
+function renderSettingsFU() {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">📞 FU Stages (7 stages)</div>
+      <p class="text-muted" style="font-size:12px;margin-bottom:14px;">
+        Configure the 7-stage follow-up timeline. Days counted from last activity.
+      </p>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;">
+        <div class="field" style="margin:0;">
+          <label style="font-size:10px;">FU 1 (days)</label>
+          <input type="number" id="setFu1" value="2" min="1" ${dis}>
+        </div>
+        <div class="field" style="margin:0;">
+          <label style="font-size:10px;">FU 2 (days)</label>
+          <input type="number" id="setFu2" value="5" min="2" ${dis}>
+        </div>
+        <div class="field" style="margin:0;">
+          <label style="font-size:10px;">FU 3 (days)</label>
+          <input type="number" id="setFu3" value="10" min="3" ${dis}>
+        </div>
+        <div class="field" style="margin:0;">
+          <label style="font-size:10px;">FU 4 (days)</label>
+          <input type="number" id="setFu4" value="18" min="4" ${dis}>
+        </div>
+        <div class="field" style="margin:0;">
+          <label style="font-size:10px;">FU 5 (days)</label>
+          <input type="number" id="setFu5" value="30" min="5" ${dis}>
+        </div>
+        <div class="field" style="margin:0;">
+          <label style="font-size:10px;">FU 6 (days)</label>
+          <input type="number" id="setFu6" value="45" min="6" ${dis}>
+        </div>
+        <div class="field" style="margin:0;">
+          <label style="font-size:10px;">FU 7 (days)</label>
+          <input type="number" id="setFu7" value="60" min="7" ${dis}>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">⏰ Best Time</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Preferred Days</label>
+          <select id="setFuDays" ${dis}>
+            <option value="tue_wed_thu">Tue / Wed / Thu</option>
+            <option value="mon_to_fri">Mon - Fri</option>
+            <option value="any">Any day</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Preferred Time</label>
+          <input type="time" id="setFuTime" value="10:30" ${dis}>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🛑 Stop Conditions</div>
+      <div class="field">
+        <label>Auto-pause FU when…</label>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">
+          <label class="row" style="gap:10px;cursor:pointer;">
+            <input type="checkbox" id="setFuStopReply" checked ${dis}>
+            <span style="font-size:13px;">Client replies (Manual Mode ON)</span>
+          </label>
+          <label class="row" style="gap:10px;cursor:pointer;">
+            <input type="checkbox" id="setFuStopConverted" checked ${dis}>
+            <span style="font-size:13px;">Client converts (active_client)</span>
+          </label>
+          <label class="row" style="gap:10px;cursor:pointer;">
+            <input type="checkbox" id="setFuStopRejected" checked ${dis}>
+            <span style="font-size:13px;">Client rejected / dropped</span>
+          </label>
+          <label class="row" style="gap:10px;cursor:pointer;">
+            <input type="checkbox" id="setFuStopManual" checked ${dis}>
+            <span style="font-size:13px;">Manual pause</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">⚠️ Missed FU</div>
+      <div class="field">
+        <label>Escalation Days</label>
+        <input type="text" id="setFuEscalation" value="10,15,20,30" placeholder="comma separated" ${dis}>
+      </div>
+      <span class="helper">FU reminders escalate to ADMIN/MASTER after these days overdue</span>
+    </div>
+
+    ${isMaster ? `
+      <div class="row" style="gap:8px;margin-top:16px;">
+        <button class="primary" onclick="saveSettingsFU()">💾 Save FU Settings</button>
+      </div>
+    ` : ''}
+  `;
+}
+
+async function saveSettingsFU() {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER'); return; }
+
+  const stages = [2, 5, 10, 18, 30, 45, 60];
+  for (let i = 0; i < 7; i++) {
+    const el = $id('setFu' + (i + 1));
+    if (el && el.value) stages[i] = parseInt(el.value, 10) || stages[i];
+  }
+
+  const data = {
+    stages: stages,
+    bestDays: ($id('setFuDays') || {}).value || 'tue_wed_thu',
+    bestTime: ($id('setFuTime') || {}).value || '10:30',
+    stopConditions: {
+      onReply: ($id('setFuStopReply') || {}).checked !== false,
+      onConverted: ($id('setFuStopConverted') || {}).checked !== false,
+      onRejected: ($id('setFuStopRejected') || {}).checked !== false,
+      onManual: ($id('setFuStopManual') || {}).checked !== false
+    },
+    escalationDays: (($id('setFuEscalation') || {}).value || '10,15,20,30').split(',').map(function(s) { return parseInt(s.trim(), 10); }).filter(Boolean),
+    updatedAt: Date.now()
+  };
+
+  try {
+    await fbDb.collection('config').doc('fuSettings').set(data, { merge: true });
+    logAuditEvent('settings_update', 'config', 'fuSettings', '');
+    showToast('success', 'FU settings saved');
+  } catch (e) {
+    console.error('Save FU failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+/* === END PART 46D === */
+/* === START PART 46E (Dropdowns) === */
+function renderSettingsDropdowns() {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">📋 Dropdown Options</div>
+      <p class="text-muted" style="font-size:12px;margin-bottom:14px;">
+        Comma-separated values. These appear as autocomplete suggestions in forms.
+      </p>
+
+      <div class="field">
+        <label>Job Profiles</label>
+        <textarea rows="3" id="setDropJobProfile" ${dis} placeholder="Sales Manager, Sales Executive, HR Manager, Accountant...">Sales Manager, Sales Executive, Sales Head, Business Development Manager, Account Manager, HR Manager, HR Executive, Recruiter, Accountant, Accounts Manager, Admin Executive, Operations Manager, Marketing Manager, Software Developer, Data Analyst</textarea>
+      </div>
+
+      <div class="field">
+        <label>Industries</label>
+        <textarea rows="3" id="setDropIndustry" ${dis} placeholder="IT, Manufacturing, Healthcare...">IT Services, Manufacturing, Healthcare, Hospitality, Logistics, Retail, Banking, Insurance, Education, Real Estate, Automobile, FMCG, Pharma, Telecom, Construction</textarea>
+      </div>
+
+      <div class="field">
+        <label>Qualifications</label>
+        <textarea rows="2" id="setDropQualification" ${dis} placeholder="MBA, B.Tech, B.Com...">10th, 12th, Diploma, B.A, B.Com, B.Sc, B.Tech, BBA, BCA, MBA, M.Com, M.Tech, MCA, CA, CS, LLB, PhD</textarea>
+      </div>
+
+      <div class="field">
+        <label>Locations (Cities)</label>
+        <textarea rows="3" id="setDropLocation" ${dis} placeholder="Delhi, Noida, Gurugram...">Delhi, Noida, Gurugram, Faridabad, Ghaziabad, Mumbai, Thane, Navi Mumbai, Pune, Bangalore, Hyderabad, Chennai, Kolkata, Ahmedabad, Jaipur, Lucknow</textarea>
+      </div>
+
+      <div class="field">
+        <label>Skills</label>
+        <textarea rows="3" id="setDropSkills" ${dis} placeholder="Communication, Excel...">Communication, Excel, MS Office, CRM, Tally, Sales, Negotiation, Team Management, Leadership, Problem Solving, Time Management, Customer Service, Data Entry, Typing, Hindi, English</textarea>
+      </div>
+
+      <div class="field">
+        <label>Job Timing</label>
+        <textarea rows="2" id="setDropJobTiming" ${dis}>9 AM - 6 PM, 10 AM - 7 PM, Flexible, Night Shift, Rotational, Part-time</textarea>
+      </div>
+
+      <div class="field">
+        <label>Work Type</label>
+        <textarea rows="2" id="setDropWorkType" ${dis}>Full-time, Part-time, Contract, Internship, Work from Home, Hybrid</textarea>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🎯 Job Families (Match Scoring)</div>
+      <p class="text-muted" style="font-size:12px;margin-bottom:14px;">
+        Edit family keywords as JSON. Used for Match scoring.
+      </p>
+      <div class="field">
+        <label>Job Families JSON</label>
+        <textarea rows="8" id="setJobFamiliesJson" ${dis} style="font-family:var(--font-mono);font-size:11px;">${escapeHtml(JSON.stringify(DEFAULT_JOB_FAMILIES, null, 2))}</textarea>
+        <span class="helper">Format: { "familyKey": { "label": "Display Name", "keywords": ["kw1", "kw2"] } }</span>
+      </div>
+    </div>
+
+    ${isMaster ? `
+      <div class="row" style="gap:8px;margin-top:16px;">
+        <button class="primary" onclick="saveSettingsDropdowns()">💾 Save Dropdowns</button>
+      </div>
+    ` : ''}
+  `;
+}
+
+async function saveSettingsDropdowns() {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER'); return; }
+
+  const parseCSV = function(id) {
+    const el = $id(id);
+    if (!el) return [];
+    return el.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  };
+
+  let families = null;
+  try {
+    const jsonEl = $id('setJobFamiliesJson');
+    if (jsonEl && jsonEl.value.trim()) {
+      families = JSON.parse(jsonEl.value);
+    }
+  } catch (e) {
+    showToast('error', 'Job Families JSON is invalid');
+    return;
+  }
+
+  const data = {
+    jobProfiles: parseCSV('setDropJobProfile'),
+    industries: parseCSV('setDropIndustry'),
+    qualifications: parseCSV('setDropQualification'),
+    locations: parseCSV('setDropLocation'),
+    skills: parseCSV('setDropSkills'),
+    jobTiming: parseCSV('setDropJobTiming'),
+    workType: parseCSV('setDropWorkType'),
+    jobFamilies: families,
+    updatedAt: Date.now()
+  };
+
+  try {
+    await fbDb.collection('config').doc('dropdownOptions').set(data, { merge: true });
+
+    if (families) {
+      JOB_FAMILIES = Object.assign({}, DEFAULT_JOB_FAMILIES, families);
+    }
+
+    logAuditEvent('settings_update', 'config', 'dropdownOptions', '');
+    showToast('success', 'Dropdowns saved');
+  } catch (e) {
+    console.error('Save dropdowns failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+/* === END PART 46E === */
+/* === START PART 46F (Spam Words) === */
+function renderSettingsSpam() {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">🚫 Tier 1 — Warnings</div>
+      <p class="text-muted" style="font-size:12px;margin-bottom:14px;">
+        Softer spam words. 2-4 matches → warning popup before sending.
+      </p>
+      <div class="field">
+        <label>Warning Words (comma separated)</label>
+        <textarea rows="4" id="setSpamTier1" ${dis} placeholder="free, cheap, urgent, limited time, act now">free, cheap, discount, urgent, limited time, act now, special offer, don't miss, hurry, click here, sale, guaranteed</textarea>
+        <span class="helper">Lower threshold — easier to trigger warning</span>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">⛔ Tier 2 — Hard Block</div>
+      <p class="text-muted" style="font-size:12px;margin-bottom:14px;">
+        Strict spam words. 1 match → email blocked immediately.
+      </p>
+      <div class="field">
+        <label>Block Words (comma separated)</label>
+        <textarea rows="4" id="setSpamTier2" ${dis} placeholder="viagra, casino, lottery, winner, cash">viagra, casino, lottery, jackpot, winner, you won, cash prize, lotto, pills, xxx, adult, lottery winner</textarea>
+        <span class="helper">Higher threshold — immediate block on match</span>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">⚠️ Thresholds</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Tier 1 Warning Threshold (word count)</label>
+          <input type="number" id="setSpamTier1Count" value="2" min="1" max="10" ${dis}>
+          <span class="helper">Min matches to trigger warning</span>
+        </div>
+        <div class="field">
+          <label>Tier 2 Block Threshold (word count)</label>
+          <input type="number" id="setSpamTier2Count" value="1" min="1" max="10" ${dis}>
+          <span class="helper">Min matches to block</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">📥 Queue Settings</div>
+      <div class="field">
+        <label>Manual Review Queue</label>
+        <select id="setSpamQueue" ${dis}>
+          <option value="true">Send blocked emails to Manual Review</option>
+          <option value="false">Reject immediately</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Auto-Reject After (days)</label>
+        <input type="number" id="setSpamAutoReject" value="7" min="1" max="30" ${dis}>
+        <span class="helper">Blocked emails auto-rejected after this many days</span>
+      </div>
+    </div>
+
+    ${isMaster ? `
+      <div class="row" style="gap:8px;margin-top:16px;">
+        <button class="primary" onclick="saveSettingsSpam()">💾 Save Spam Settings</button>
+      </div>
+    ` : ''}
+  `;
+}
+
+async function saveSettingsSpam() {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER'); return; }
+
+  const parseCSV = function(id) {
+    const el = $id(id);
+    if (!el) return [];
+    return el.value.toLowerCase().split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  };
+
+  const data = {
+    tier1Words: parseCSV('setSpamTier1'),
+    tier2Words: parseCSV('setSpamTier2'),
+    tier1Threshold: parseInt(($id('setSpamTier1Count') || {}).value, 10) || 2,
+    tier2Threshold: parseInt(($id('setSpamTier2Count') || {}).value, 10) || 1,
+    manualReviewQueue: ($id('setSpamQueue') || {}).value === 'true',
+    autoRejectAfterDays: parseInt(($id('setSpamAutoReject') || {}).value, 10) || 7,
+    updatedAt: Date.now()
+  };
+
+  try {
+    await fbDb.collection('config').doc('spamWords').set(data, { merge: true });
+    logAuditEvent('settings_update', 'config', 'spamWords', '');
+    showToast('success', 'Spam settings saved');
+  } catch (e) {
+    console.error('Save spam failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+/* === END PART 46F === */
+/* === START PART 46G (Archive) === */
+function renderSettingsArchive() {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">📦 Archive Trigger</div>
+      <div class="field">
+        <label>Auto-archive when</label>
+        <select id="setArchiveTrigger" ${dis}>
+          <option value="req_close_1yr">Req Closed + 1 year</option>
+          <option value="inactive_1yr">No activity + 1 year</option>
+          <option value="both" selected>Both conditions</option>
+        </select>
+      </div>
+      <span class="helper">Companies meeting criteria are auto-archived by the Worker</span>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">⏳ Retention</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Default Retention</label>
+          <select id="setArchiveRetention" ${dis}>
+            <option value="6mo">6 months</option>
+            <option value="1yr" selected>1 year</option>
+            <option value="2yr">2 years</option>
+            <option value="forever">Forever</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Firestore 80%+ Trigger</label>
+          <select id="setArchivePressure" ${dis}>
+            <option value="11mo" selected>Archive at 11 months</option>
+            <option value="none">Do nothing</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">💾 Storage Destination</div>
+      <div class="field">
+        <label>Primary Storage</label>
+        <select id="setArchiveStorage" ${dis}>
+          <option value="sheets" selected>Google Sheets (year-wise)</option>
+          <option value="drive">Google Drive (JSON)</option>
+          <option value="both">Both</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Snapshot Contents</label>
+        <select id="setArchiveSnapshot" ${dis}>
+          <option value="full" selected>Full snapshot (all history + relations)</option>
+          <option value="basic">Basic fields only</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">♻️ Restore Settings</div>
+      <div class="field">
+        <label>Restore Mode</label>
+        <select id="setArchiveRestoreMode" ${dis}>
+          <option value="readonly" selected>Read-only view first</option>
+          <option value="direct">Direct restore</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Grace Period (days)</label>
+        <input type="number" id="setArchiveGrace" value="30" min="7" max="90" ${dis}>
+        <span class="helper">Days after archive where restore is free</span>
+      </div>
+      <div class="field">
+        <label>Conflict Resolution</label>
+        <select id="setArchiveConflict" ${dis}>
+          <option value="manual" selected>Manual (MASTER decides)</option>
+          <option value="keep_new">Keep newer version</option>
+          <option value="keep_old">Keep older version</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🚫 Never Archive</div>
+      <div class="field">
+        <label>Protected Stages (comma separated)</label>
+        <input type="text" id="setArchiveProtected" value="client_converted, active_client, post_placement" ${dis}>
+        <span class="helper">Companies in these stages are never auto-archived</span>
+      </div>
+    </div>
+
+    ${isMaster ? `
+      <div class="row" style="gap:8px;margin-top:16px;">
+        <button class="primary" onclick="saveSettingsArchive()">💾 Save Archive Settings</button>
+      </div>
+    ` : ''}
+  `;
+}
+
+async function saveSettingsArchive() {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER'); return; }
+
+  const data = {
+    trigger: ($id('setArchiveTrigger') || {}).value || 'both',
+    retention: ($id('setArchiveRetention') || {}).value || '1yr',
+    firestorePressure: ($id('setArchivePressure') || {}).value || '11mo',
+    storage: ($id('setArchiveStorage') || {}).value || 'sheets',
+    snapshotType: ($id('setArchiveSnapshot') || {}).value || 'full',
+    restoreMode: ($id('setArchiveRestoreMode') || {}).value || 'readonly',
+    gracePeriodDays: parseInt(($id('setArchiveGrace') || {}).value, 10) || 30,
+    conflictResolution: ($id('setArchiveConflict') || {}).value || 'manual',
+    protectedStages: (($id('setArchiveProtected') || {}).value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+    updatedAt: Date.now()
+  };
+
+  try {
+    await fbDb.collection('config').doc('archive').set(data, { merge: true });
+    logAuditEvent('settings_update', 'config', 'archive', '');
+    showToast('success', 'Archive settings saved');
+  } catch (e) {
+    console.error('Save archive failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+/* === END PART 46G === */
+/* === START PART 46H (Category Filter) === */
+function renderSettingsCategory() {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">🏷️ Category Filter (Worker-side)</div>
+      <p class="text-muted" style="font-size:12px;margin-bottom:14px;">
+        Data Collector only keeps companies matching these categories. Others are auto-filtered.
+      </p>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">✅ KEEP Categories</div>
+      <div class="field">
+        <label>Keep List (comma separated)</label>
+        <textarea rows="4" id="setCategoryKeep" ${dis} placeholder="manufacturer, corporate_office, service...">manufacturer, corporate_office, service, establishment, hospital, logistics, IT, education, warehouse, factory, corporate, enterprise, head_office, branch_office</textarea>
+        <span class="helper">Companies matching these categories are kept</span>
+      </div>
+      <div class="chips-wrap" style="margin-top:10px;">
+        <span class="chip">manufacturer</span>
+        <span class="chip">corporate_office</span>
+        <span class="chip">service</span>
+        <span class="chip">hospital</span>
+        <span class="chip">IT</span>
+        <span class="chip">logistics</span>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">❌ REMOVE Categories</div>
+      <div class="field">
+        <label>Remove List (comma separated)</label>
+        <textarea rows="4" id="setCategoryRemove" ${dis} placeholder="food, personal_care, retail...">food, personal_care, retail, auto, small_health, entertainment, fitness, salon, spa, beauty, restaurant, cafe, fast_food, local_shop</textarea>
+        <span class="helper">Companies matching these categories are auto-filtered out</span>
+      </div>
+      <div class="chips-wrap" style="margin-top:10px;">
+        <span class="chip">food</span>
+        <span class="chip">retail</span>
+        <span class="chip">auto</span>
+        <span class="chip">entertainment</span>
+        <span class="chip">salon</span>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">⚙️ Filter Mode</div>
+      <div class="field">
+        <label>Unknown Categories</label>
+        <select id="setCategoryUnknown" ${dis}>
+          <option value="keep" selected>Keep (err on safe side)</option>
+          <option value="remove">Remove</option>
+          <option value="manual">Send to manual review</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Apply Filter At</label>
+        <select id="setCategoryApplyAt" ${dis}>
+          <option value="collection" selected>At collection time (Worker)</option>
+          <option value="review">At review time (after collection)</option>
+          <option value="both">Both</option>
+        </select>
+      </div>
+    </div>
+
+    ${isMaster ? `
+      <div class="row" style="gap:8px;margin-top:16px;">
+        <button class="primary" onclick="saveSettingsCategory()">💾 Save Category Filter</button>
+      </div>
+    ` : ''}
+  `;
+}
+
+async function saveSettingsCategory() {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER'); return; }
+
+  const parseCSV = function(id) {
+    const el = $id(id);
+    if (!el) return [];
+    return el.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  };
+
+  const data = {
+    keepCategories: parseCSV('setCategoryKeep'),
+    removeCategories: parseCSV('setCategoryRemove'),
+    unknownMode: ($id('setCategoryUnknown') || {}).value || 'keep',
+    applyAt: ($id('setCategoryApplyAt') || {}).value || 'collection',
+    updatedAt: Date.now()
+  };
+
+  try {
+    await fbDb.collection('config').doc('categoryFilter').set(data, { merge: true });
+    logAuditEvent('settings_update', 'config', 'categoryFilter', '');
+    showToast('success', 'Category filter saved');
+  } catch (e) {
+    console.error('Save category failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+/* === END PART 46H === */
+/* === START PART 46I (Security) === */
+function renderSettingsSecurity() {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">⏱️ Session</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Session Timeout (minutes)</label>
+          <input type="number" id="setSecSessionTimeout" value="30" min="5" max="180" ${dis}>
+        </div>
+        <div class="field">
+          <label>Warning Before Timeout (minutes)</label>
+          <input type="number" id="setSecWarningBefore" value="2" min="1" max="10" ${dis}>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Absolute Expiry (days)</label>
+          <input type="number" id="setSecAbsoluteExpiry" value="30" min="1" max="365" ${dis}>
+        </div>
+        <div class="field">
+          <label>Remember Me Default</label>
+          <select id="setSecRememberMe" ${dis}>
+            <option value="true" selected>Checked</option>
+            <option value="false">Unchecked</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">📱 Device Limits</div>
+      <div class="field">
+        <label>Max Sessions Per User</label>
+        <input type="number" id="setSecMaxSessions" value="2" min="1" max="10" ${dis}>
+        <span class="helper">1 mobile + 1 desktop. Extra login → oldest session logout</span>
+      </div>
+      <div class="field">
+        <label>Mobile/Desktop Split</label>
+        <select id="setSecSessionSplit" ${dis}>
+          <option value="mobile_desktop" selected>1 mobile + 1 desktop</option>
+          <option value="any">Any 2 devices</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🔐 Password Rules</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Min Length</label>
+          <input type="number" id="setSecPwdMinLen" value="8" min="6" max="32" ${dis}>
+        </div>
+        <div class="field">
+          <label>Require Number</label>
+          <select id="setSecPwdNumber" ${dis}>
+            <option value="true" selected>Yes</option>
+            <option value="false">No</option>
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Require Special Char</label>
+          <select id="setSecPwdSpecial" ${dis}>
+            <option value="false" selected>No</option>
+            <option value="true">Yes</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Password History</label>
+          <input type="number" id="setSecPwdHistory" value="3" min="1" max="10" ${dis}>
+          <span class="helper">Last N passwords cannot be reused</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🚨 Login Attempts</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Max Attempts</label>
+          <input type="number" id="setSecMaxAttempts" value="5" min="3" max="20" ${dis}>
+        </div>
+        <div class="field">
+          <label>Lockout Duration (minutes)</label>
+          <input type="number" id="setSecLockDuration" value="15" min="1" max="1440" ${dis}>
+        </div>
+      </div>
+      <span class="helper">Failed logins → lockout for this duration</span>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🔑 Password Change</div>
+      <div class="field">
+        <label>Change Flow</label>
+        <select id="setSecChangeFlow" ${dis}>
+          <option value="pwd_otp" selected>Current password + Email OTP</option>
+          <option value="pwd_only">Current password only</option>
+          <option value="otp_only">Email OTP only</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>After Password Change</label>
+        <select id="setSecAfterChange" ${dis}>
+          <option value="logout_all" selected>Force logout all devices</option>
+          <option value="logout_current">Logout current device only</option>
+          <option value="none">Keep sessions active</option>
+        </select>
+      </div>
+    </div>
+
+    ${isMaster ? `
+      <div class="row" style="gap:8px;margin-top:16px;">
+        <button class="primary" onclick="saveSettingsSecurity()">💾 Save Security Settings</button>
+      </div>
+    ` : ''}
+  `;
+}
+
+async function saveSettingsSecurity() {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER'); return; }
+
+  const data = {
+    sessionTimeoutMin: parseInt(($id('setSecSessionTimeout') || {}).value, 10) || 30,
+    warningBeforeMin: parseInt(($id('setSecWarningBefore') || {}).value, 10) || 2,
+    absoluteExpiryDays: parseInt(($id('setSecAbsoluteExpiry') || {}).value, 10) || 30,
+    rememberMeDefault: ($id('setSecRememberMe') || {}).value === 'true',
+    maxSessions: parseInt(($id('setSecMaxSessions') || {}).value, 10) || 2,
+    sessionSplit: ($id('setSecSessionSplit') || {}).value || 'mobile_desktop',
+    passwordRules: {
+      minLength: parseInt(($id('setSecPwdMinLen') || {}).value, 10) || 8,
+      requireNumber: ($id('setSecPwdNumber') || {}).value === 'true',
+      requireSpecial: ($id('setSecPwdSpecial') || {}).value === 'true',
+      historyCount: parseInt(($id('setSecPwdHistory') || {}).value, 10) || 3
+    },
+    loginAttempts: {
+      maxAttempts: parseInt(($id('setSecMaxAttempts') || {}).value, 10) || 5,
+      lockoutMinutes: parseInt(($id('setSecLockDuration') || {}).value, 10) || 15
+    },
+    passwordChange: {
+      flow: ($id('setSecChangeFlow') || {}).value || 'pwd_otp',
+      afterChange: ($id('setSecAfterChange') || {}).value || 'logout_all'
+    },
+    updatedAt: Date.now()
+  };
+
+  try {
+    await fbDb.collection('config').doc('security').set(data, { merge: true });
+    logAuditEvent('settings_update', 'config', 'security', '');
+    showToast('success', 'Security settings saved');
+  } catch (e) {
+    console.error('Save security failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+/* === END PART 46I === */
+/* === START PART 46J (Notifications) === */
+function renderSettingsNotifications() {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">🔔 Notification Types</div>
+      <p class="text-muted" style="font-size:12px;margin-bottom:14px;">
+        Toggle which events generate notifications.
+      </p>
+
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setNotifAssignment" checked ${dis}>
+          <span style="font-size:13px;">Assignment — company/candidate assigned</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setNotifHandover" checked ${dis}>
+          <span style="font-size:13px;">Handover / Takeover requests</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setNotifFU" checked ${dis}>
+          <span style="font-size:13px;">FU reminders (overdue / due today)</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setNotifTasks" checked ${dis}>
+          <span style="font-size:13px;">Task assignments & due dates</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setNotifSubmission" checked ${dis}>
+          <span style="font-size:13px;">Candidate submissions & status changes</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setNotifInquiry" checked ${dis}>
+          <span style="font-size:13px;">New public form inquiries</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setNotifEmail" ${dis}>
+          <span style="font-size:13px;">Email sending events</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setNotifArchive" checked ${dis}>
+          <span style="font-size:13px;">Archive / Snapshot completion</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">⚡ Priority Levels</div>
+      <div class="field">
+        <label>Sound Notification For</label>
+        <select id="setNotifSoundPriority" ${dis}>
+          <option value="critical">Critical only</option>
+          <option value="critical_high" selected>Critical + High</option>
+          <option value="all">All priorities</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Auto-dismiss Time (seconds)</label>
+        <input type="number" id="setNotifAutoDismiss" value="5" min="2" max="30" ${dis}>
+        <span class="helper">Notification drawer items stay until cleared</span>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">📱 Display</div>
+      <div class="field">
+        <label>Retention (items)</label>
+        <input type="number" id="setNotifRetention" value="100" min="50" max="500" ${dis}>
+        <span class="helper">Keep last N notifications per user</span>
+      </div>
+      <div class="field">
+        <label>Grouping</label>
+        <select id="setNotifGrouping" ${dis}>
+          <option value="4" selected>Group when 4+ of same type</option>
+          <option value="disabled">Never group</option>
+          <option value="2">Group when 2+</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Cross-Device Read Sync</label>
+        <select id="setNotifSync" ${dis}>
+          <option value="true" selected>Yes (Firestore realtime)</option>
+          <option value="false">No</option>
+        </select>
+      </div>
+    </div>
+
+    ${isMaster ? `
+      <div class="row" style="gap:8px;margin-top:16px;">
+        <button class="primary" onclick="saveSettingsNotifications()">💾 Save Notification Settings</button>
+      </div>
+    ` : ''}
+  `;
+}
+
+async function saveSettingsNotifications() {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER'); return; }
+
+  const data = {
+    types: {
+      assignment: ($id('setNotifAssignment') || {}).checked !== false,
+      handover: ($id('setNotifHandover') || {}).checked !== false,
+      fu: ($id('setNotifFU') || {}).checked !== false,
+      tasks: ($id('setNotifTasks') || {}).checked !== false,
+      submission: ($id('setNotifSubmission') || {}).checked !== false,
+      inquiry: ($id('setNotifInquiry') || {}).checked !== false,
+      email: ($id('setNotifEmail') || {}).checked === true,
+      archive: ($id('setNotifArchive') || {}).checked !== false
+    },
+    soundPriority: ($id('setNotifSoundPriority') || {}).value || 'critical_high',
+    autoDismissSeconds: parseInt(($id('setNotifAutoDismiss') || {}).value, 10) || 5,
+    retention: parseInt(($id('setNotifRetention') || {}).value, 10) || 100,
+    groupingThreshold: parseInt(($id('setNotifGrouping') || {}).value, 10) || 0,
+    crossDeviceSync: ($id('setNotifSync') || {}).value === 'true',
+    updatedAt: Date.now()
+  };
+
+  try {
+    await fbDb.collection('config').doc('notifications').set(data, { merge: true });
+    logAuditEvent('settings_update', 'config', 'notifications', '');
+    showToast('success', 'Notification settings saved');
+  } catch (e) {
+    console.error('Save notifications failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+/* === END PART 46J === */
+/* === START PART 46K (Worker Settings) === */
+function renderSettingsWorker() {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">🔧 Worker Endpoint</div>
+      <div class="field">
+        <label>Worker URL</label>
+        <input type="url" id="setWorkerUrl" value="https://seven-horses-proxy.sevenhorsescrm.workers.dev" ${dis}>
+        <span class="helper">Cloudflare Workers proxy URL</span>
+      </div>
+      <button class="ghost sm" onclick="testWorkerHealth()" ${dis}>🩺 Test Health</button>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🔍 Google Places Search</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Pages to Fetch</label>
+          <input type="number" id="setWorkerGPages" value="5" min="1" max="10" ${dis}>
+        </div>
+        <div class="field">
+          <label>Delay Between Pages (sec)</label>
+          <input type="number" id="setWorkerGDelay" value="2.5" min="0.5" max="10" step="0.5" ${dis}>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">📦 Apify Settings</div>
+      <div class="field">
+        <label>Skip Reviews</label>
+        <select id="setWorkerApifySkipReviews" ${dis}>
+          <option value="true" selected>Yes (faster)</option>
+          <option value="false">No (include reviews)</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Retry Count</label>
+          <input type="number" id="setWorkerRetry" value="2" min="0" max="5" ${dis}>
+        </div>
+        <div class="field">
+          <label>Retry Delay (sec)</label>
+          <input type="number" id="setWorkerRetryDelay" value="2" min="1" max="10" ${dis}>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">⚙️ Enrichment</div>
+      <div class="field">
+        <label>Parallel Groups</label>
+        <input type="number" id="setWorkerParallel" value="3" min="1" max="5" ${dis}>
+        <span class="helper">Emails+Phones / Hiring+JobBoard / EmployeeCount+ContactPerson</span>
+      </div>
+      <div class="field">
+        <label>Timeout (seconds)</label>
+        <input type="number" id="setWorkerTimeout" value="30" min="10" max="120" ${dis}>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🗄️ KV Namespaces</div>
+      <div class="info-row">
+        <span class="info-label">USAGE_COUNTERS</span>
+        <span class="info-value">Tracker namespace</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">ROLE_CACHE</span>
+        <span class="info-value">Auth role cache</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">SESSION_DEVICES</span>
+        <span class="info-value">Device session limits</span>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🌐 Environment Variables</div>
+      <div class="field">
+        <label>APIFY_TOKEN</label>
+        <input type="password" id="setWorkerApifyToken" placeholder="apify_..." ${dis}>
+      </div>
+      <div class="field">
+        <label>GPLACES_KEY</label>
+        <input type="password" id="setWorkerGplacesKey" placeholder="AIza..." ${dis}>
+      </div>
+      <div class="field">
+        <label>SHEETS_API_KEY (base64)</label>
+        <input type="password" id="setWorkerSheetsKey" placeholder="base64 encoded" ${dis}>
+      </div>
+      <div class="field">
+        <label>SHEETS_SPREADSHEET_ID</label>
+        <input type="text" id="setWorkerSheetsId" placeholder="1abc..." ${dis}>
+      </div>
+    </div>
+
+    ${isMaster ? `
+      <div class="row" style="gap:8px;margin-top:16px;">
+        <button class="primary" onclick="saveSettingsWorker()">💾 Save Worker Settings</button>
+      </div>
+    ` : ''}
+  `;
+}
+
+async function saveSettingsWorker() {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER'); return; }
+
+  const data = {
+    workerUrl: ($id('setWorkerUrl') || {}).value || '',
+    gplaces: {
+      pages: parseInt(($id('setWorkerGPages') || {}).value, 10) || 5,
+      delaySec: parseFloat(($id('setWorkerGDelay') || {}).value) || 2.5
+    },
+    apify: {
+      skipReviews: ($id('setWorkerApifySkipReviews') || {}).value === 'true',
+      retry: parseInt(($id('setWorkerRetry') || {}).value, 10) || 2,
+      retryDelaySec: parseInt(($id('setWorkerRetryDelay') || {}).value, 10) || 2
+    },
+    enrichment: {
+      parallelGroups: parseInt(($id('setWorkerParallel') || {}).value, 10) || 3,
+      timeoutSec: parseInt(($id('setWorkerTimeout') || {}).value, 10) || 30
+    },
+    envVars: {
+      apifyToken: ($id('setWorkerApifyToken') || {}).value || '',
+      gplacesKey: ($id('setWorkerGplacesKey') || {}).value || '',
+      sheetsApiKey: ($id('setWorkerSheetsKey') || {}).value || '',
+      sheetsSpreadsheetId: ($id('setWorkerSheetsId') || {}).value || ''
+    },
+    updatedAt: Date.now()
+  };
+
+  try {
+    await fbDb.collection('config').doc('worker').set(data, { merge: true });
+    logAuditEvent('settings_update', 'config', 'worker', '');
+    showToast('success', 'Worker settings saved');
+  } catch (e) {
+    console.error('Save worker failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+async function testWorkerHealth() {
+  const url = ($id('setWorkerUrl') || {}).value || WORKER_URL;
+  if (!url) { showToast('warning', 'Worker URL missing'); return; }
+
+  showToast('info', 'Testing worker...');
+  try {
+    const res = await fetch(url + '/health', { method: 'GET' });
+    if (res.ok) {
+      const data = await res.json().catch(function() { return {}; });
+      showToast('success', 'Worker OK · ' + (data.version || 'healthy'));
+    } else {
+      showToast('error', 'Worker returned ' + res.status);
+    }
+  } catch (e) {
+    console.error('Worker test failed:', e);
+    showToast('error', 'Worker unreachable');
+  }
+}
+
+/* === END PART 46K === */
+/* === START PART 46L (Google Sheets) === */
+function renderSettingsSheets() {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">📊 Spreadsheet Config</div>
+      <div class="field">
+        <label>Spreadsheet ID</label>
+        <input type="text" id="setSheetsId" placeholder="1abc...xyz" ${dis}>
+        <span class="helper">From the Google Sheets URL (between /d/ and /edit)</span>
+      </div>
+      <div class="field">
+        <label>Service Account JSON (base64)</label>
+        <textarea rows="3" id="setSheetsSA" placeholder="base64 encoded service account key" ${dis} style="font-family:var(--font-mono);font-size:11px;"></textarea>
+      </div>
+      <button class="ghost sm" onclick="testSheetsConnection()" ${dis}>🩺 Test Connection</button>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🔄 Sync Settings</div>
+      <div class="field">
+        <label>Sheet Structure</label>
+        <select id="setSheetsStructure" ${dis}>
+          <option value="yearwise" selected>Year-wise sheets (Auto)</option>
+          <option value="single">Single sheet (all data)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Sync Mode</label>
+        <select id="setSheetsMode" ${dis}>
+          <option value="hybrid" selected>Hybrid (Main + History sheets)</option>
+          <option value="main">Main sheet only</option>
+          <option value="full">Full (with notes history)</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Auto-sync Trigger</label>
+          <select id="setSheetsTrigger" ${dis}>
+            <option value="daily_2am" selected>Daily at 2 AM</option>
+            <option value="manual">Manual only</option>
+            <option value="on_create">On every create</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Batch Size</label>
+          <input type="number" id="setSheetsBatch" value="100" min="10" max="1000" ${dis}>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🗂️ Columns Mapping</div>
+      <div class="field">
+        <label>Company Sheet Columns (comma separated)</label>
+        <input type="text" id="setSheetsCompanyCols" value="code, name, contactPerson, phone, email, location, industry, stage, assignedToName, createdAt" ${dis}>
+      </div>
+      <div class="field">
+        <label>Candidate Sheet Columns</label>
+        <input type="text" id="setSheetsCandidateCols" value="code, name, phone, email, jobProfile, qualification, experienceType, location, stage, createdAt" ${dis}>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">📥 Restore</div>
+      <div class="field">
+        <label>Restore Mode</label>
+        <select id="setSheetsRestoreMode" ${dis}>
+          <option value="readonly" selected>Read-only view first</option>
+          <option value="direct">Direct restore to Firestore</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Conflict Resolution</label>
+          <select id="setSheetsConflict" ${dis}>
+            <option value="manual" selected>Manual (MASTER decides)</option>
+            <option value="keep_new">Keep newer</option>
+            <option value="keep_old">Keep older</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Grace Period (days)</label>
+          <input type="number" id="setSheetsGrace" value="30" min="7" max="90" ${dis}>
+        </div>
+      </div>
+    </div>
+
+    ${isMaster ? `
+      <div class="row" style="gap:8px;margin-top:16px;">
+        <button class="primary" onclick="saveSettingsSheets()">💾 Save Sheets Settings</button>
+      </div>
+    ` : ''}
+  `;
+}
+
+async function saveSettingsSheets() {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER'); return; }
+
+  const data = {
+    spreadsheetId: ($id('setSheetsId') || {}).value || '',
+    serviceAccountB64: ($id('setSheetsSA') || {}).value || '',
+    structure: ($id('setSheetsStructure') || {}).value || 'yearwise',
+    syncMode: ($id('setSheetsMode') || {}).value || 'hybrid',
+    trigger: ($id('setSheetsTrigger') || {}).value || 'daily_2am',
+    batchSize: parseInt(($id('setSheetsBatch') || {}).value, 10) || 100,
+    companyColumns: (($id('setSheetsCompanyCols') || {}).value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+    candidateColumns: (($id('setSheetsCandidateCols') || {}).value || '').split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+    restoreMode: ($id('setSheetsRestoreMode') || {}).value || 'readonly',
+    conflictResolution: ($id('setSheetsConflict') || {}).value || 'manual',
+    gracePeriodDays: parseInt(($id('setSheetsGrace') || {}).value, 10) || 30,
+    updatedAt: Date.now()
+  };
+
+  try {
+    await fbDb.collection('config').doc('sheets').set(data, { merge: true });
+    logAuditEvent('settings_update', 'config', 'sheets', '');
+    showToast('success', 'Sheets settings saved');
+  } catch (e) {
+    console.error('Save sheets failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+async function testSheetsConnection() {
+  const sheetId = ($id('setSheetsId') || {}).value;
+  const saKey = ($id('setSheetsSA') || {}).value;
+
+  if (!sheetId || !saKey) {
+    showToast('warning', 'Fill Spreadsheet ID + Service Account first');
+    return;
+  }
+
+  showToast('info', 'Testing connection...');
+  try {
+    const res = await fetch(WORKER_URL + '/sheets/stats?spreadsheetId=' + encodeURIComponent(sheetId), {
+      method: 'GET'
+    });
+    if (res.ok) {
+      showToast('success', 'Sheets connected');
+    } else {
+      showToast('error', 'Sheets returned ' + res.status);
+    }
+  } catch (e) {
+    console.error('Sheets test failed:', e);
+    showToast('error', 'Connection failed');
+  }
+}
+
+/* === END PART 46L === */
+/* === START PART 46M (Form Fields) === */
+function renderSettingsFormFields() {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">📄 Public Form — Candidate Fields</div>
+      <p class="text-muted" style="font-size:12px;margin-bottom:14px;">
+        Configure which fields appear on the public candidate form. Mandatory fields cannot be turned off.
+      </p>
+      <div id="formFieldsCandidateList"></div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🏢 Public Form — Company Fields</div>
+      <p class="text-muted" style="font-size:12px;margin-bottom:14px;">
+        Configure which fields appear on the public company form.
+      </p>
+      <div id="formFieldsCompanyList"></div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">➕ Add Custom Field</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Field Label</label>
+          <input type="text" id="setCustomFieldLabel" placeholder="e.g. Portfolio URL" ${dis}>
+        </div>
+        <div class="field">
+          <label>Field Key (lowercase, no spaces)</label>
+          <input type="text" id="setCustomFieldKey" placeholder="e.g. portfolioUrl" ${dis}>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Type</label>
+          <select id="setCustomFieldType" ${dis}>
+            <option value="text">Text</option>
+            <option value="number">Number</option>
+            <option value="email">Email</option>
+            <option value="url">URL</option>
+            <option value="textarea">Text Area</option>
+            <option value="select">Dropdown</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Applies To</label>
+          <select id="setCustomFieldScope" ${dis}>
+            <option value="candidate">Candidate</option>
+            <option value="company">Company</option>
+            <option value="both">Both</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Options (if dropdown, comma separated)</label>
+        <input type="text" id="setCustomFieldOptions" placeholder="Option 1, Option 2" ${dis}>
+      </div>
+      ${isMaster ? `
+        <button class="primary sm" onclick="addCustomFormField()">➕ Add Field</button>
+      ` : ''}
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">📜 Consent & Legal</div>
+      <div class="field">
+        <label>Age Declaration</label>
+        <select id="setFormAgeDeclaration" ${dis}>
+          <option value="18" selected>18+ mandatory</option>
+          <option value="none">No age declaration</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Privacy Policy URL</label>
+        <input type="url" id="setFormPrivacyUrl" placeholder="https://..." ${dis}>
+      </div>
+      <div class="field">
+        <label>Terms URL</label>
+        <input type="url" id="setFormTermsUrl" placeholder="https://..." ${dis}>
+      </div>
+      <div class="field">
+        <label>Consent Checkbox Text</label>
+        <input type="text" id="setFormConsentText" value="I agree to Privacy Policy and Terms of Service" ${dis}>
+      </div>
+    </div>
+
+    ${isMaster ? `
+      <div class="row" style="gap:8px;margin-top:16px;">
+        <button class="primary" onclick="saveSettingsFormFields()">💾 Save Form Fields</button>
+      </div>
+    ` : ''}
+  `;
+}
+
+async function loadFormFieldsList() {
+  const cEl = $id('formFieldsCandidateList');
+  const coEl = $id('formFieldsCompanyList');
+  if (!cEl || !coEl) return;
+
+  const defaultCandidate = [
+    { key: 'name', label: 'Full Name', required: true, enabled: true, type: 'text' },
+    { key: 'phone', label: 'Phone', required: true, enabled: true, type: 'tel' },
+    { key: 'email', label: 'Email', required: true, enabled: true, type: 'email' },
+    { key: 'experienceType', label: 'Experience Type', required: true, enabled: true, type: 'select' },
+    { key: 'experience', label: 'Experience (years)', required: false, enabled: true, type: 'number' },
+    { key: 'lastSalary', label: 'Last Salary', required: false, enabled: true, type: 'number' },
+    { key: 'expectedSalary', label: 'Expected Salary', required: false, enabled: true, type: 'number' },
+    { key: 'qualification', label: 'Qualification', required: false, enabled: true, type: 'text' },
+    { key: 'jobProfile', label: 'Job Profile', required: false, enabled: true, type: 'text' },
+    { key: 'skills', label: 'Skills', required: false, enabled: true, type: 'text' },
+    { key: 'location', label: 'Location', required: false, enabled: true, type: 'text' },
+    { key: 'address', label: 'Address', required: false, enabled: true, type: 'textarea' }
+  ];
+
+  const defaultCompany = [
+    { key: 'name', label: 'Company Name', required: true, enabled: true, type: 'text' },
+    { key: 'contactPerson', label: 'Contact Person', required: true, enabled: true, type: 'text' },
+    { key: 'phone', label: 'Phone', required: true, enabled: true, type: 'tel' },
+    { key: 'email', label: 'Email', required: true, enabled: true, type: 'email' },
+    { key: 'location', label: 'Location', required: true, enabled: true, type: 'text' },
+    { key: 'designation', label: 'Designation', required: false, enabled: true, type: 'text' },
+    { key: 'website', label: 'Website', required: false, enabled: true, type: 'url' },
+    { key: 'industry', label: 'Industry', required: false, enabled: true, type: 'text' },
+    { key: 'notes', label: 'Additional Notes', required: false, enabled: true, type: 'textarea' }
+  ];
+
+  let candidateFields = defaultCandidate;
+  let companyFields = defaultCompany;
+
+  try {
+    const doc = await fbDb.collection('config').doc('formFields').get();
+    if (doc.exists) {
+      const d = doc.data() || {};
+      if (Array.isArray(d.candidate) && d.candidate.length) candidateFields = d.candidate;
+      if (Array.isArray(d.company) && d.company.length) companyFields = d.company;
+    }
+  } catch (e) {
+    console.warn('Form fields load failed:', e);
+  }
+
+  cEl.innerHTML = candidateFields.map(function(f, i) { return renderFormFieldRow('candidate', f, i); }).join('');
+  coEl.innerHTML = companyFields.map(function(f, i) { return renderFormFieldRow('company', f, i); }).join('');
+}
+
+function renderFormFieldRow(scope, f, idx) {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = (f.required || !isMaster) ? 'disabled' : '';
+  const checkedAttr = f.enabled !== false ? 'checked' : '';
+  const reqBadge = f.required ? '<span class="badge error sm" style="margin-left:6px;">Required</span>' : '';
+
+  return `
+    <div class="card flat" style="padding:10px 12px;margin-bottom:8px;">
+      <div class="row between" style="gap:10px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;color:var(--text-primary);">
+            ${escapeHtml(f.label)}${reqBadge}
+          </div>
+          <div class="text-muted" style="font-size:10px;margin-top:2px;">
+            key: <code>${escapeHtml(f.key)}</code> · type: ${escapeHtml(f.type)}
+          </div>
+        </div>
+        <label class="row" style="gap:8px;cursor:pointer;">
+          <input type="checkbox" ${checkedAttr} ${dis}
+            onchange="toggleFormField('${scope}', ${idx}, this.checked)">
+          <span style="font-size:11px;">Show</span>
+        </label>
+      </div>
+    </div>
+  `;
+}
+
+async function toggleFormField(scope, idx, enabled) {
+  if (STATE.role !== 'MASTER') return;
+
+  try {
+    const doc = await fbDb.collection('config').doc('formFields').get();
+    const data = doc.exists ? (doc.data() || {}) : {};
+
+    const defaults = scope === 'candidate' ? getDefaultCandidateFields() : getDefaultCompanyFields();
+    const list = data[scope] || defaults;
+
+    if (list[idx]) {
+      list[idx].enabled = enabled;
+    }
+
+    const updates = {};
+    updates[scope] = list;
+
+    await fbDb.collection('config').doc('formFields').set(updates, { merge: true });
+    logAuditEvent('form_field_toggle', 'config', scope + '[' + idx + ']', enabled ? 'on' : 'off');
+    showToast('success', 'Field ' + (enabled ? 'enabled' : 'disabled'));
+    loadFormFieldsList();
+  } catch (e) {
+    console.error('Toggle field failed:', e);
+    showToast('error', 'Failed to update');
+  }
+}
+
+function getDefaultCandidateFields() {
+  return [
+    { key: 'name', label: 'Full Name', required: true, enabled: true, type: 'text' },
+    { key: 'phone', label: 'Phone', required: true, enabled: true, type: 'tel' },
+    { key: 'email', label: 'Email', required: true, enabled: true, type: 'email' },
+    { key: 'experienceType', label: 'Experience Type', required: true, enabled: true, type: 'select' },
+    { key: 'experience', label: 'Experience (years)', required: false, enabled: true, type: 'number' },
+    { key: 'lastSalary', label: 'Last Salary', required: false, enabled: true, type: 'number' },
+    { key: 'expectedSalary', label: 'Expected Salary', required: false, enabled: true, type: 'number' },
+    { key: 'qualification', label: 'Qualification', required: false, enabled: true, type: 'text' },
+    { key: 'jobProfile', label: 'Job Profile', required: false, enabled: true, type: 'text' },
+    { key: 'skills', label: 'Skills', required: false, enabled: true, type: 'text' },
+    { key: 'location', label: 'Location', required: false, enabled: true, type: 'text' },
+    { key: 'address', label: 'Address', required: false, enabled: true, type: 'textarea' }
+  ];
+}
+
+function getDefaultCompanyFields() {
+  return [
+    { key: 'name', label: 'Company Name', required: true, enabled: true, type: 'text' },
+    { key: 'contactPerson', label: 'Contact Person', required: true, enabled: true, type: 'text' },
+    { key: 'phone', label: 'Phone', required: true, enabled: true, type: 'tel' },
+    { key: 'email', label: 'Email', required: true, enabled: true, type: 'email' },
+    { key: 'location', label: 'Location', required: true, enabled: true, type: 'text' },
+    { key: 'designation', label: 'Designation', required: false, enabled: true, type: 'text' },
+    { key: 'website', label: 'Website', required: false, enabled: true, type: 'url' },
+    { key: 'industry', label: 'Industry', required: false, enabled: true, type: 'text' },
+    { key: 'notes', label: 'Additional Notes', required: false, enabled: true, type: 'textarea' }
+  ];
+}
+
+async function addCustomFormField() {
+  if (STATE.role !== 'MASTER') return;
+
+  const labelEl = $id('setCustomFieldLabel');
+  const keyEl = $id('setCustomFieldKey');
+  const typeEl = $id('setCustomFieldType');
+  const scopeEl = $id('setCustomFieldScope');
+  const optsEl = $id('setCustomFieldOptions');
+
+  const label = (labelEl ? labelEl.value : '').trim();
+  const key = (keyEl ? keyEl.value : '').trim().replace(/[^a-z0-9_]/gi, '');
+  const type = typeEl ? typeEl.value : 'text';
+  const scope = scopeEl ? scopeEl.value : 'candidate';
+  const options = optsEl ? optsEl.value : '';
+
+  if (!label || !key) {
+    showToast('warning', 'Label and Key required');
+    return;
+  }
+
+  try {
+    const doc = await fbDb.collection('config').doc('formFields').get();
+    const data = doc.exists ? (doc.data() || {}) : {};
+
+    const newField = { key: key, label: label, required: false, enabled: true, type: type, custom: true };
+    if (type === 'select' && options) {
+      newField.options = options.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+    }
+
+    const updates = {};
+    if (scope === 'candidate' || scope === 'both') {
+      const list = data.candidate || getDefaultCandidateFields();
+      list.push(newField);
+      updates.candidate = list;
+    }
+    if (scope === 'company' || scope === 'both') {
+      const list = data.company || getDefaultCompanyFields();
+      list.push(Object.assign({}, newField));
+      updates.company = list;
+    }
+
+    await fbDb.collection('config').doc('formFields').set(updates, { merge: true });
+    logAuditEvent('form_field_add', 'config', key, label);
+    showToast('success', 'Custom field added');
+    if (labelEl) labelEl.value = '';
+    if (keyEl) keyEl.value = '';
+    if (optsEl) optsEl.value = '';
+    loadFormFieldsList();
+  } catch (e) {
+    console.error('Add custom field failed:', e);
+    showToast('error', 'Failed to add');
+  }
+}
+
+async function saveSettingsFormFields() {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER'); return; }
+
+  const data = {
+    ageDeclaration: ($id('setFormAgeDeclaration') || {}).value || '18',
+    privacyUrl: ($id('setFormPrivacyUrl') || {}).value || '',
+    termsUrl: ($id('setFormTermsUrl') || {}).value || '',
+    consentText: ($id('setFormConsentText') || {}).value || '',
+    updatedAt: Date.now()
+  };
+
+  try {
+    await fbDb.collection('config').doc('formFields').set(data, { merge: true });
+    logAuditEvent('settings_update', 'config', 'formFields', '');
+    showToast('success', 'Form fields saved');
+  } catch (e) {
+    console.error('Save form fields failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+/* === END PART 46M === */
+/* === START PART 46N (API Keys) === */
+function renderSettingsApiKeys() {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">🔑 External API Keys</div>
+      <p class="text-muted" style="font-size:12px;margin-bottom:14px;">
+        All keys are stored in Firestore <code>config/apiKeys</code>. Only MASTER can view/edit.
+      </p>
+
+      <div class="field">
+        <label>Apify Token</label>
+        <div style="position:relative;">
+          <input type="password" id="setKeyApify" placeholder="apify_api_..." ${dis} style="padding-right:44px;">
+          <button type="button" class="icon-btn" onclick="toggleKeyVisibility('setKeyApify')"
+            style="position:absolute;right:4px;top:50%;transform:translateY(-50%);width:32px;height:32px;border:none;background:transparent;">👁️</button>
+        </div>
+        <span class="helper">Used by Worker for company scraping</span>
+      </div>
+
+      <div class="field">
+        <label>Google Places API Key</label>
+        <div style="position:relative;">
+          <input type="password" id="setKeyGPlaces" placeholder="AIza..." ${dis} style="padding-right:44px;">
+          <button type="button" class="icon-btn" onclick="toggleKeyVisibility('setKeyGPlaces')"
+            style="position:absolute;right:4px;top:50%;transform:translateY(-50%);width:32px;height:32px;border:none;background:transparent;">👁️</button>
+        </div>
+        <span class="helper">Used for primary company search</span>
+      </div>
+
+      <div class="field">
+        <label>Cloudinary Cloud Name</label>
+        <input type="text" id="setKeyCloudName" placeholder="your-cloud-name" ${dis}>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Cloudinary API Key</label>
+          <input type="password" id="setKeyCloudKey" placeholder="123456789" ${dis}>
+        </div>
+        <div class="field">
+          <label>Cloudinary API Secret</label>
+          <input type="password" id="setKeyCloudSecret" placeholder="secret..." ${dis}>
+        </div>
+      </div>
+      <div class="field">
+        <label>Cloudinary Upload Preset</label>
+        <input type="text" id="setKeyCloudPreset" placeholder="unsigned_preset" ${dis}>
+        <span class="helper">For unsigned uploads from client</span>
+      </div>
+
+      <div class="field">
+        <label>Brevo API Key</label>
+        <input type="password" id="setKeyBrevo" placeholder="xkeysib-..." ${dis}>
+        <span class="helper">Used for auto FU emails</span>
+      </div>
+
+      <div class="field">
+        <label>EmailJS Public Key</label>
+        <input type="text" id="setKeyEjs" placeholder="Public key from EmailJS" ${dis}>
+      </div>
+
+      <div class="field">
+        <label>Google Sheets API Key (base64)</label>
+        <textarea rows="3" id="setKeySheets" placeholder="base64 encoded service account JSON" ${dis} style="font-family:var(--font-mono);font-size:11px;"></textarea>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🧪 Test Keys</div>
+      <div class="row" style="gap:8px;flex-wrap:wrap;">
+        <button class="ghost sm" onclick="testApiKey('apify')" ${dis}>🩺 Apify</button>
+        <button class="ghost sm" onclick="testApiKey('gplaces')" ${dis}>🩺 GPlaces</button>
+        <button class="ghost sm" onclick="testApiKey('cloudinary')" ${dis}>🩺 Cloudinary</button>
+        <button class="ghost sm" onclick="testApiKey('brevo')" ${dis}>🩺 Brevo</button>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">📊 Usage Limits (Free Tiers)</div>
+      <div class="info-row">
+        <span class="info-label">Apify</span>
+        <span class="info-value">$5 free/month</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Google Places</span>
+        <span class="info-value">$200 credit/month</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Cloudinary</span>
+        <span class="info-value">25 GB free</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Brevo</span>
+        <span class="info-value">300 emails/day</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">EmailJS</span>
+        <span class="info-value">200 emails/month</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Cloudflare Workers</span>
+        <span class="info-value">100K requests/day</span>
+      </div>
+    </div>
+
+    ${isMaster ? `
+      <div class="row" style="gap:8px;margin-top:16px;">
+        <button class="primary" onclick="saveSettingsApiKeys()">💾 Save API Keys</button>
+      </div>
+    ` : ''}
+  `;
+}
+
+function toggleKeyVisibility(inputId) {
+  const el = $id(inputId);
+  if (!el) return;
+  el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+async function saveSettingsApiKeys() {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER'); return; }
+
+  const data = {
+    apify: ($id('setKeyApify') || {}).value || '',
+    gplaces: ($id('setKeyGPlaces') || {}).value || '',
+    cloudinary: {
+      cloudName: ($id('setKeyCloudName') || {}).value || '',
+      apiKey: ($id('setKeyCloudKey') || {}).value || '',
+      apiSecret: ($id('setKeyCloudSecret') || {}).value || '',
+      uploadPreset: ($id('setKeyCloudPreset') || {}).value || ''
+    },
+    brevo: ($id('setKeyBrevo') || {}).value || '',
+    emailjs: ($id('setKeyEjs') || {}).value || '',
+    sheets: ($id('setKeySheets') || {}).value || '',
+    updatedAt: Date.now()
+  };
+
+  try {
+    await fbDb.collection('config').doc('apiKeys').set(data, { merge: true });
+    logAuditEvent('settings_update', 'config', 'apiKeys', '');
+    showToast('success', 'API keys saved');
+  } catch (e) {
+    console.error('Save API keys failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+async function testApiKey(which) {
+  if (STATE.role !== 'MASTER') return;
+
+  showToast('info', 'Testing ' + which + '...');
+
+  try {
+    if (which === 'apify') {
+      const token = ($id('setKeyApify') || {}).value;
+      if (!token) { showToast('warning', 'Enter Apify token'); return; }
+      const res = await fetch('https://api.apify.com/v2/users/me?token=' + encodeURIComponent(token));
+      if (res.ok) showToast('success', 'Apify key valid');
+      else showToast('error', 'Apify returned ' + res.status);
+    } else if (which === 'gplaces') {
+      const key = ($id('setKeyGPlaces') || {}).value;
+      if (!key) { showToast('warning', 'Enter GPlaces key'); return; }
+      const res = await fetch('https://maps.googleapis.com/maps/api/place/textsearch/json?query=test&key=' + encodeURIComponent(key));
+      const data = await res.json().catch(function() { return {}; });
+      if (data.status && data.status !== 'REQUEST_DENIED') showToast('success', 'GPlaces key valid');
+      else showToast('error', 'GPlaces: ' + (data.status || 'unknown'));
+    } else if (which === 'cloudinary') {
+      const cloudName = ($id('setKeyCloudName') || {}).value;
+      if (!cloudName) { showToast('warning', 'Enter Cloud name'); return; }
+      const res = await fetch('https://api.cloudinary.com/v1_1/' + cloudName + '/ping', { method: 'GET' });
+      if (res.ok) showToast('success', 'Cloudinary OK');
+      else showToast('error', 'Cloudinary returned ' + res.status);
+    } else if (which === 'brevo') {
+      const key = ($id('setKeyBrevo') || {}).value;
+      if (!key) { showToast('warning', 'Enter Brevo key'); return; }
+      const res = await fetch('https://api.brevo.com/v3/account', {
+        headers: { 'api-key': key }
+      });
+      if (res.ok) showToast('success', 'Brevo key valid');
+      else showToast('error', 'Brevo returned ' + res.status);
+    }
+  } catch (e) {
+    console.error('API test failed:', e);
+    showToast('error', 'Test failed: ' + (e.message || 'network'));
+  }
+}
+
+/* === END PART 46N === */
+/* === START PART 46O (Shortlist Config) === */
+function renderSettingsShortlist() {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">📌 Shortlist Limits</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Max per Company</label>
+          <input type="number" id="setShortlistMax" value="20" min="5" max="100" ${dis}>
+        </div>
+        <div class="field">
+          <label>Auto-clear After Send</label>
+          <select id="setShortlistAutoClear" ${dis}>
+            <option value="true" selected>Yes</option>
+            <option value="false">No (keep shortlist)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🎯 Match Scoring Weights</div>
+      <p class="text-muted" style="font-size:12px;margin-bottom:14px;">
+        Total must equal 100. Current: Job Profile 30 + Experience 20 + Qualification 15 + Salary 15 + Location 10 + Skills 10 = 100.
+      </p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;">
+        <div class="field" style="margin:0;">
+          <label style="font-size:10px;">Job Profile</label>
+          <input type="number" id="setMatchJobProfile" value="30" min="0" max="50" ${dis}>
+        </div>
+        <div class="field" style="margin:0;">
+          <label style="font-size:10px;">Experience</label>
+          <input type="number" id="setMatchExperience" value="20" min="0" max="40" ${dis}>
+        </div>
+        <div class="field" style="margin:0;">
+          <label style="font-size:10px;">Qualification</label>
+          <input type="number" id="setMatchQualification" value="15" min="0" max="30" ${dis}>
+        </div>
+        <div class="field" style="margin:0;">
+          <label style="font-size:10px;">Salary</label>
+          <input type="number" id="setMatchSalary" value="15" min="0" max="30" ${dis}>
+        </div>
+        <div class="field" style="margin:0;">
+          <label style="font-size:10px;">Location</label>
+          <input type="number" id="setMatchLocation" value="10" min="0" max="30" ${dis}>
+        </div>
+        <div class="field" style="margin:0;">
+          <label style="font-size:10px;">Skills</label>
+          <input type="number" id="setMatchSkills" value="10" min="0" max="30" ${dis}>
+        </div>
+      </div>
+      <span class="helper" id="matchTotalHint">Total: 100</span>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">📍 Region Groups</div>
+      <p class="text-muted" style="font-size:12px;margin-bottom:14px;">
+        Cities in the same region get full location score in match. One region per line, comma separated cities.
+      </p>
+      <div class="field">
+        <label>Regions</label>
+        <textarea rows="6" id="setShortlistRegions" ${dis} placeholder="Delhi, Noida, Gurugram, Faridabad&#10;Mumbai, Thane, Navi Mumbai&#10;Bangalore, Whitefield">Delhi, Noida, Gurugram, Gurgaon, Faridabad, Ghaziabad
+Mumbai, Thane, Navi Mumbai
+Bangalore, Bengaluru, Whitefield, Electronic City
+Hyderabad, Secunderabad
+Chennai, Coimbatore
+Pune, Pimpri, Chinchwad</textarea>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">📤 Send Behavior</div>
+      <div class="field">
+        <label>Send Mode</label>
+        <select id="setShortlistSendMode" ${dis}>
+          <option value="batch" selected>Batch (all at once)</option>
+          <option value="individual">Individual approval per candidate</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Post-Send Popup</label>
+        <select id="setShortlistPostPopup" ${dis}>
+          <option value="true" selected>Show "Add to shortlist?" on contact</option>
+          <option value="false">No popup</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🚫 Duplicate Rules</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setShortlistBlockSame" checked ${dis}>
+          <span style="font-size:13px;">Block same candidate to same company + same requirement</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setShortlistAllowDiff" checked ${dis}>
+          <span style="font-size:13px;">Allow same candidate to same company (different req)</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setShortlistAfterReject" checked ${dis}>
+          <span style="font-size:13px;">Warning + MASTER approval after rejection</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setShortlistMultiCompany" checked ${dis}>
+          <span style="font-size:13px;">Allow candidate to multiple companies</span>
+        </label>
+      </div>
+    </div>
+
+    ${isMaster ? `
+      <div class="row" style="gap:8px;margin-top:16px;">
+        <button class="primary" onclick="saveSettingsShortlist()">💾 Save Shortlist Config</button>
+      </div>
+    ` : ''}
+  `;
+}
+
+async function saveSettingsShortlist() {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER'); return; }
+
+  const weights = {
+    jobProfile: parseInt(($id('setMatchJobProfile') || {}).value, 10) || 30,
+    experience: parseInt(($id('setMatchExperience') || {}).value, 10) || 20,
+    qualification: parseInt(($id('setMatchQualification') || {}).value, 10) || 15,
+    salary: parseInt(($id('setMatchSalary') || {}).value, 10) || 15,
+    location: parseInt(($id('setMatchLocation') || {}).value, 10) || 10,
+    skills: parseInt(($id('setMatchSkills') || {}).value, 10) || 10
+  };
+
+  const total = weights.jobProfile + weights.experience + weights.qualification + weights.salary + weights.location + weights.skills;
+  if (total !== 100) {
+    if (!confirm('Weights total = ' + total + ' (should be 100). Save anyway?')) return;
+  }
+
+  const regionsRaw = ($id('setShortlistRegions') || {}).value || '';
+  const regions = regionsRaw.split('\n').map(function(line) {
+    return line.split(',').map(function(s) { return s.trim().toLowerCase(); }).filter(Boolean);
+  }).filter(function(arr) { return arr.length > 0; });
+
+  const data = {
+    maxPerCompany: parseInt(($id('setShortlistMax') || {}).value, 10) || 20,
+    autoClearAfterSend: ($id('setShortlistAutoClear') || {}).value === 'true',
+    weights: weights,
+    regions: regions,
+    sendMode: ($id('setShortlistSendMode') || {}).value || 'batch',
+    postSendPopup: ($id('setShortlistPostPopup') || {}).value === 'true',
+    duplicateRules: {
+      blockSame: ($id('setShortlistBlockSame') || {}).checked !== false,
+      allowDiffReq: ($id('setShortlistAllowDiff') || {}).checked !== false,
+      afterReject: ($id('setShortlistAfterReject') || {}).checked !== false,
+      multiCompany: ($id('setShortlistMultiCompany') || {}).checked !== false
+    },
+    updatedAt: Date.now()
+  };
+
+  try {
+    await fbDb.collection('config').doc('shortlistConfig').set(data, { merge: true });
+    logAuditEvent('settings_update', 'config', 'shortlistConfig', '');
+    showToast('success', 'Shortlist config saved');
+  } catch (e) {
+    console.error('Save shortlist failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+/* === END PART 46O === */
+/* === START PART 46P (Inquiry Config) === */
+function renderSettingsInquiry() {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">📥 Inquiry Behavior</div>
+      <p class="text-muted" style="font-size:12px;margin-bottom:14px;">
+        How public form submissions (inquiries) are handled before they become companies.
+      </p>
+      <div class="field">
+        <label>Inquiry Status Flow</label>
+        <input type="text" id="setInquiryFlow" value="new, contacted, follow_up, converted, rejected" ${dis}>
+        <span class="helper">Comma-separated statuses in order</span>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Default Initial Status</label>
+          <select id="setInquiryInitial" ${dis}>
+            <option value="new" selected>new</option>
+            <option value="contacted">contacted</option>
+            <option value="pending_review">pending_review</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Auto-Hide After</label>
+          <select id="setInquiryAutoHide" ${dis}>
+            <option value="converted" selected>Converted</option>
+            <option value="converted_rejected">Converted / Rejected</option>
+            <option value="never">Never (keep forever)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🔀 Claim System</div>
+      <div class="field">
+        <label>Claim Mode</label>
+        <select id="setInquiryClaimMode" ${dis}>
+          <option value="hybrid" selected>Hybrid (MASTER/ADMIN assign + Employee claim)</option>
+          <option value="assign_only">MASTER/ADMIN assign only</option>
+          <option value="claim_only">Employee self-claim only</option>
+        </select>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Claimed Inquiry Access</label>
+          <select id="setInquiryClaimAccess" ${dis}>
+            <option value="assignee_admin" selected>Assignee + MASTER/ADMIN</option>
+            <option value="everyone">Everyone</option>
+            <option value="assignee_only">Assignee only</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Auto-Assign After (days)</label>
+          <input type="number" id="setInquiryAutoAssign" value="0" min="0" max="30" ${dis}>
+          <span class="helper">0 = disabled. Auto-assign unclaimed inquiries</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🔍 Deduplication</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setInquiryDedupPhone" checked ${dis}>
+          <span style="font-size:13px;">Check phone (last 10 digits) against companies</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setInquiryDedupEmail" checked ${dis}>
+          <span style="font-size:13px;">Check email against companies</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setInquiryDedupName" checked ${dis}>
+          <span style="font-size:13px;">Check name + location fuzzy match</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setInquiryDedupDomain" checked ${dis}>
+          <span style="font-size:13px;">Check website domain</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🎯 Promote to Company</div>
+      <div class="field">
+        <label>Promote Modal Fields</label>
+        <select id="setInquiryPromotePreview" ${dis}>
+          <option value="preview_edit" selected>Preview + Edit + Assign</option>
+          <option value="direct">Direct create (no preview)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Promote Creates</label>
+        <textarea rows="3" id="setInquiryPromoteActions" ${dis} placeholder="What happens when promoted">company_doc_create, inquiry_status_converted, agreement_option, assign_option, team_notification, audit_log</textarea>
+        <span class="helper">Comma-separated actions</span>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Notify Team</label>
+          <select id="setInquiryNotify" ${dis}>
+            <option value="true" selected>Yes</option>
+            <option value="false">No</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Log Audit</label>
+          <select id="setInquiryLogAudit" ${dis}>
+            <option value="true" selected>Yes</option>
+            <option value="false">No</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">📢 Public Form Response</div>
+      <div class="field">
+        <label>Duplicate Submission Message</label>
+        <input type="text" id="setInquiryDupMsg" value="Already submitted. Team will contact you." ${dis}>
+      </div>
+      <div class="field">
+        <label>Success Message</label>
+        <input type="text" id="setInquirySuccessMsg" value="Thank you! Our team will contact you shortly." ${dis}>
+      </div>
+    </div>
+
+    ${isMaster ? `
+      <div class="row" style="gap:8px;margin-top:16px;">
+        <button class="primary" onclick="saveSettingsInquiry()">💾 Save Inquiry Config</button>
+      </div>
+    ` : ''}
+  `;
+}
+
+async function saveSettingsInquiry() {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER'); return; }
+
+  const parseCSV = function(id) {
+    const el = $id(id);
+    if (!el) return [];
+    return el.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+  };
+
+  const data = {
+    statusFlow: parseCSV('setInquiryFlow'),
+    initialStatus: ($id('setInquiryInitial') || {}).value || 'new',
+    autoHideAfter: ($id('setInquiryAutoHide') || {}).value || 'converted',
+    claimMode: ($id('setInquiryClaimMode') || {}).value || 'hybrid',
+    claimedAccess: ($id('setInquiryClaimAccess') || {}).value || 'assignee_admin',
+    autoAssignAfterDays: parseInt(($id('setInquiryAutoAssign') || {}).value, 10) || 0,
+    dedupChecks: {
+      phone: ($id('setInquiryDedupPhone') || {}).checked !== false,
+      email: ($id('setInquiryDedupEmail') || {}).checked !== false,
+      name: ($id('setInquiryDedupName') || {}).checked !== false,
+      domain: ($id('setInquiryDedupDomain') || {}).checked !== false
+    },
+    promoteMode: ($id('setInquiryPromotePreview') || {}).value || 'preview_edit',
+    promoteActions: parseCSV('setInquiryPromoteActions'),
+    notifyTeam: ($id('setInquiryNotify') || {}).value === 'true',
+    logAudit: ($id('setInquiryLogAudit') || {}).value === 'true',
+    messages: {
+      duplicate: ($id('setInquiryDupMsg') || {}).value || '',
+      success: ($id('setInquirySuccessMsg') || {}).value || ''
+    },
+    updatedAt: Date.now()
+  };
+
+  try {
+    await fbDb.collection('config').doc('inquiryConfig').set(data, { merge: true });
+    logAuditEvent('settings_update', 'config', 'inquiryConfig', '');
+    showToast('success', 'Inquiry config saved');
+  } catch (e) {
+    console.error('Save inquiry failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+/* === END PART 46P === */
+/* === START PART 46Q (Advanced) === */
+function renderSettingsAdvanced() {
+  const isMaster = STATE.role === 'MASTER';
+  const dis = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">🔥 Firebase Config (Read-only)</div>
+      <div class="info-row">
+        <span class="info-label">Project ID</span>
+        <span class="info-value">${escapeHtml(FIREBASE_CONFIG.projectId)}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Auth Domain</span>
+        <span class="info-value">${escapeHtml(FIREBASE_CONFIG.authDomain)}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Storage Bucket</span>
+        <span class="info-value">${escapeHtml(FIREBASE_CONFIG.storageBucket)}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">App ID</span>
+        <span class="info-value" style="font-size:11px;">${escapeHtml(FIREBASE_CONFIG.appId)}</span>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">📱 App Info</div>
+      <div class="info-row">
+        <span class="info-label">App Name</span>
+        <span class="info-value">${escapeHtml(APP_CONFIG.name)}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Version</span>
+        <span class="info-value">${escapeHtml(APP_CONFIG.version)}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Worker URL</span>
+        <span class="info-value" style="font-size:11px;">${escapeHtml(WORKER_URL)}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Current User</span>
+        <span class="info-value">${escapeHtml((STATE.user && STATE.user.name) || '—')}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Role</span>
+        <span class="info-value">${escapeHtml(STATE.role || '—')}</span>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🎚️ Feature Flags</div>
+      <p class="text-muted" style="font-size:12px;margin-bottom:14px;">
+        Toggle major modules on/off without code changes.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setFlagCollector" checked ${dis}>
+          <span style="font-size:13px;">Data Collector</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setFlagClientDashboard" checked ${dis}>
+          <span style="font-size:13px;">Client Dashboard</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setFlagTrustScore" checked ${dis}>
+          <span style="font-size:13px;">Trust Score</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setFlagDispute" checked ${dis}>
+          <span style="font-size:13px;">Dispute System</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setFlagPayment" checked ${dis}>
+          <span style="font-size:13px;">Payment Tracking</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setFlagAutoArchive" checked ${dis}>
+          <span style="font-size:13px;">Auto Archive</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setFlagGCal" ${dis}>
+          <span style="font-size:13px;">Google Calendar Sync</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setFlagChat" ${dis}>
+          <span style="font-size:13px;">Internal Chat</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setFlagWhatsApp" ${dis}>
+          <span style="font-size:13px;">WhatsApp Integration</span>
+        </label>
+        <label class="row" style="gap:10px;cursor:pointer;">
+          <input type="checkbox" id="setFlagAI" checked ${dis}>
+          <span style="font-size:13px;">AI Features</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🧪 Dev Tools</div>
+      <div class="row" style="gap:8px;flex-wrap:wrap;">
+        <button class="ghost sm" onclick="clearLocalCache()" ${dis}>🗑️ Clear Local Cache</button>
+        <button class="ghost sm" onclick="exportFullBackup()" ${dis}>💾 Export Full Backup</button>
+        <button class="ghost sm" onclick="runHealthCheck()" ${dis}>🩺 Run Health Check</button>
+      </div>
+      <div class="field" style="margin-top:14px;">
+        <label>Console Log Level</label>
+        <select id="setLogLevel" ${dis}>
+          <option value="error">Error only</option>
+          <option value="warn">Warning + Error</option>
+          <option value="info" selected>Info + Warning + Error</option>
+          <option value="debug">Debug (verbose)</option>
+        </select>
+      </div>
+    </div>
+
+    ${isMaster ? `
+      <div class="form-section">
+        <div class="form-section-title" style="color:var(--error);">⚠️ Danger Zone</div>
+        <p class="text-muted" style="font-size:12px;margin-bottom:14px;">
+          These actions are irreversible. Use with caution.
+        </p>
+        <div class="row" style="gap:8px;flex-wrap:wrap;">
+          <button class="danger sm" onclick="purgeSoftDeleted()">🗑️ Purge Soft-Deleted Data</button>
+          <button class="danger sm" onclick="resetAppConfig()">🔄 Reset All Config</button>
+        </div>
+      </div>
+    ` : ''}
+
+    ${isMaster ? `
+      <div class="row" style="gap:8px;margin-top:16px;">
+        <button class="primary" onclick="saveSettingsAdvanced()">💾 Save Advanced Settings</button>
+      </div>
+    ` : ''}
+  `;
+}
+
+async function saveSettingsAdvanced() {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER'); return; }
+
+  const data = {
+    featureFlags: {
+      collector: ($id('setFlagCollector') || {}).checked !== false,
+      clientDashboard: ($id('setFlagClientDashboard') || {}).checked !== false,
+      trustScore: ($id('setFlagTrustScore') || {}).checked !== false,
+      dispute: ($id('setFlagDispute') || {}).checked !== false,
+      payment: ($id('setFlagPayment') || {}).checked !== false,
+      autoArchive: ($id('setFlagAutoArchive') || {}).checked !== false,
+      googleCalendar: ($id('setFlagGCal') || {}).checked === true,
+      chat: ($id('setFlagChat') || {}).checked === true,
+      whatsapp: ($id('setFlagWhatsApp') || {}).checked === true,
+      ai: ($id('setFlagAI') || {}).checked !== false
+    },
+    logLevel: ($id('setLogLevel') || {}).value || 'info',
+    updatedAt: Date.now()
+  };
+
+  try {
+    await fbDb.collection('config').doc('advanced').set(data, { merge: true });
+    logAuditEvent('settings_update', 'config', 'advanced', '');
+    showToast('success', 'Advanced settings saved');
+  } catch (e) {
+    console.error('Save advanced failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+function clearLocalCache() {
+  if (!confirm('Clear all local cache (recent searches, preferences)?')) return;
+  try {
+    localStorage.clear();
+    sessionStorage.clear();
+    showToast('success', 'Local cache cleared');
+    setTimeout(function() { location.reload(); }, 1500);
+  } catch (e) {
+    showToast('error', 'Failed to clear');
+  }
+}
+
+async function exportFullBackup() {
+  if (STATE.role !== 'MASTER') { showToast('warning', 'Only MASTER'); return; }
+
+  showToast('info', 'Preparing backup...');
+
+  try {
+    const collections = ['companies', 'candidates', 'employees', 'tasks', 'config'];
+    const backup = { exportedAt: Date.now(), version: APP_CONFIG.version, data: {} };
+
+    for (let i = 0; i < collections.length; i++) {
+      const col = collections[i];
+      const snap = await fbDb.collection(col).limit(1000).get();
+      backup.data[col] = snap.docs.map(function(d) {
+        return Object.assign({ _id: d.id }, d.data());
+      });
+    }
+
+    const json = JSON.stringify(backup, null, 2);
+    downloadFile(json, 'seven-horses-backup-' + Date.now() + '.json', 'application/json');
+    showToast('success', 'Backup downloaded');
+  } catch (e) {
+    console.error('Backup failed:', e);
+    showToast('error', 'Backup failed');
+  }
+}
+
+async function runHealthCheck() {
+  showToast('info', 'Running checks...');
+
+  const checks = [];
+
+  checks.push({
+    name: 'Firebase',
+    ok: fbReady
+  });
+
+  checks.push({
+    name: 'Firestore',
+    ok: !!fbDb
+  });
+
+  checks.push({
+    name: 'Auth',
+    ok: !!fbAuth
+  });
+
+  checks.push({
+    name: 'User session',
+    ok: !!STATE.user
+  });
+
+  let workerOk = false;
+  try {
+    const res = await fetch(WORKER_URL + '/health', { method: 'GET' });
+    workerOk = res.ok;
+  } catch (e) {}
+
+  checks.push({ name: 'Worker', ok: workerOk });
+
+  const okCount = checks.filter(function(c) { return c.ok; }).length;
+
+  let msg = checks.map(function(c) {
+    return (c.ok ? '✅' : '❌') + ' ' + c.name;
+  }).join('\n');
+
+  alert('Health Check (' + okCount + '/' + checks.length + ')\n\n' + msg);
+}
+
+async function purgeSoftDeleted() {
+  if (STATE.role !== 'MASTER') return;
+
+  const typed = prompt('This will permanently delete all soft-deleted records older than 30 days.\n\nType "PURGE" to confirm:');
+  if (typed !== 'PURGE') { showToast('warning', 'Cancelled'); return; }
+
+  showToast('info', 'Purge coming soon — worker integration needed');
+}
+
+async function resetAppConfig() {
+  if (STATE.role !== 'MASTER') return;
+
+  if (!confirm('Reset ALL configuration to defaults? This will NOT delete your data.')) return;
+  if (!confirm('Are you absolutely sure? All custom settings will be lost.')) return;
+
+  try {
+    const snap = await fbDb.collection('config').limit(50).get();
+    const batch = fbDb.batch();
+    snap.docs.forEach(function(d) {
+      batch.delete(d.ref);
+    });
+    await batch.commit();
+
+    logAuditEvent('config_reset', 'config', 'all', '');
+    showToast('success', 'All config reset to defaults');
+    setTimeout(function() { location.reload(); }, 1500);
+  } catch (e) {
+    console.error('Reset config failed:', e);
+    showToast('error', 'Failed to reset');
+  }
+}
+
+/* === END PART 46Q — ALL 17 TABS COMPLETE === */
     /* === START PART 43 === */
 /* ============================================================
    PAGE: CALENDAR
