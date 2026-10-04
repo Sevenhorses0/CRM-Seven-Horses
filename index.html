@@ -1135,10 +1135,8 @@ button.block,
   left: var(--sidebar-width);
   right: 0;
   height: var(--header-height);
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border-bottom: 1px solid var(--border);
+  background: var(--navy);
+  border-bottom: 1px solid rgba(201, 169, 97, 0.25);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1180,8 +1178,8 @@ button.block,
   height: 38px;
   border-radius: var(--radius);
   background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--gold);
   font-size: 18px;
   align-items: center;
   justify-content: center;
@@ -1210,8 +1208,8 @@ button.block,
   height: 38px;
   border-radius: var(--radius);
   background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-primary);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--gold);
   font-size: 16px;
   display: inline-flex;
   align-items: center;
@@ -1223,8 +1221,8 @@ button.block,
 }
 
 .header-icon-btn:hover {
-  background: var(--bg-subtle);
-  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: var(--gold);
 }
 
 .header-icon-btn .badge-dot {
@@ -1242,7 +1240,7 @@ button.block,
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--bg-white);
+  border: 2px solid var(--navy);
 }
 
 /* === END PART 5 === */
