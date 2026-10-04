@@ -3379,6 +3379,89 @@ a.plain:hover {
 .animate-slide-down { animation: slideDown var(--transition); }
 .animate-slide-up { animation: slideUp var(--transition); }
 .animate-scale-in { animation: scaleIn var(--transition); }
+  /* === START SETTINGS CSS === */
+.settings-layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.settings-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  position: sticky;
+  top: calc(var(--header-height) + 16px);
+  max-height: calc(100vh - var(--header-height) - 32px);
+  overflow-y: auto;
+}
+
+.settings-tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  transition: all var(--transition-fast);
+}
+
+.settings-tab:hover {
+  background: var(--bg-subtle);
+  color: var(--text-primary);
+}
+
+.settings-tab.active {
+  background: linear-gradient(90deg, rgba(201,169,97,.12), rgba(201,169,97,.04));
+  color: var(--gold-dark);
+  font-weight: 700;
+}
+
+.settings-content {
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  min-height: 400px;
+}
+
+@media (max-width: 900px) {
+  .settings-layout {
+    grid-template-columns: 1fr;
+  }
+  .settings-sidebar {
+    position: static;
+    max-height: none;
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 6px;
+    scrollbar-width: none;
+  }
+  .settings-sidebar::-webkit-scrollbar { display: none; }
+  .settings-tab {
+    flex-shrink: 0;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+  .settings-content {
+    padding: 16px;
+  }
+}
+/* === END SETTINGS CSS === */
 
 /* ============================================================
    END OF CSS
@@ -11764,10 +11847,812 @@ function exportCandidatesCSV(list, filename) {
    PLACEHOLDERS
    ============================================================ */
 function openAddCandidateModal() { showToast('info', 'Add Candidate — Coming in Part 38'); }
-function openEditCandidateModal(id) { showToast('info', 'Edit Candidate — Coming soon'); }
-function openCandidateDrawer(id) { showToast('info', 'Candidate Drawer — Coming in Part 37'); }
 
 /* === END PART 35D === */
+/* === START PART 37A (Candidate Drawer) === */
+/* ============================================================
+   CANDIDATE DRAWER — MAIN
+   ============================================================ */
+const CANDIDATE_DRAWER_TABS = [
+  { id: 'profile', label: 'Profile' },
+  { id: 'match', label: 'Match' },
+  { id: 'actions', label: 'Actions' }
+];
+
+async function openCandidateDrawer(candidateId) {
+  if (!candidateId) return;
+
+  let candidate = (STATE.cache.candidates || []).find(function(c) { return c.id === candidateId; });
+  if (!candidate) {
+    candidate = await fetchDoc('candidates', candidateId);
+  }
+  if (!candidate) {
+    showToast('error', 'Candidate not found');
+    return;
+  }
+
+  const role = STATE.role;
+  let allowedTabs = CANDIDATE_DRAWER_TABS.slice();
+  if (role === 'CLIENT') {
+    allowedTabs = allowedTabs.filter(function(t) { return t.id === 'profile'; });
+  }
+
+  const tabs = allowedTabs.map(function(t) { return { id: t.id, label: t.label }; });
+  const html = renderCandidateDrawerTab('profile', candidate);
+
+  openDrawer(html, {
+    title: candidate.name || 'Candidate',
+    size: 'lg',
+    tabs: tabs,
+    activeTab: 'profile',
+    data: { candidateId: candidateId, candidate: candidate },
+    tabRenderer: function(tabId, data) {
+      return renderCandidateDrawerTab(tabId, data.candidate);
+    }
+  });
+}
+
+function renderCandidateDrawerTab(tab, candidate) {
+  try {
+    switch (tab) {
+      case 'profile': return renderCandidateDrawerProfile(candidate);
+      case 'match':   return renderCandidateDrawerMatch(candidate);
+      case 'actions': return renderCandidateDrawerActions(candidate);
+      default:        return '<div class="text-muted" style="padding:20px;">Unknown tab</div>';
+    }
+  } catch (e) {
+    console.error('Candidate drawer tab failed:', tab, e);
+    return '<div class="empty-state error"><div class="empty-icon">⚠️</div><div>' + escapeHtml(e.message || 'Error') + '</div></div>';
+  }
+}
+
+/* ============================================================
+   TAB: PROFILE
+   ============================================================ */
+function renderCandidateDrawerProfile(c) {
+  const stageInfo = getCandidateStageInfo(c.stage || 'active');
+  const av = initials(c.name || 'C');
+
+  const rows = [
+    { label: 'Full Name', value: c.name, icon: '👤' },
+    { label: 'Phone', value: c.phone, icon: '📞', copy: true },
+    { label: 'Email', value: c.email, icon: '📧', copy: true },
+    { label: 'Qualification', value: c.qualification, icon: '🎓' },
+    { label: 'Job Profile', value: c.jobProfile, icon: '💼' },
+    { label: 'Experience', value: c.experienceType === 'fresher' ? 'Fresher' : (c.experience ? c.experience + ' yrs' : ''), icon: '📊' },
+    { label: 'Last Salary', value: c.lastSalary ? '₹' + c.lastSalary : '', icon: '💰' },
+    { label: 'Expected Salary', value: c.expectedSalary ? '₹' + c.expectedSalary : '', icon: '💵' },
+    { label: 'Location', value: c.location, icon: '📍' },
+    { label: 'Address', value: c.address, icon: '🏠' }
+  ];
+
+  const skillsArr = Array.isArray(c.skills) ? c.skills : (c.skills ? String(c.skills).split(',').map(function(s) { return s.trim(); }) : []);
+
+  let skillsHtml = '';
+  if (skillsArr.length) {
+    skillsHtml = '<div class="chips-wrap" style="margin-top:6px;">';
+    skillsArr.forEach(function(s) {
+      skillsHtml += '<span class="chip">' + escapeHtml(s) + '</span>';
+    });
+    skillsHtml += '</div>';
+  }
+
+  let rowsHtml = '';
+  rows.forEach(function(r) {
+    if (!r.value) return;
+    rowsHtml += '<div class="info-row">' +
+      '<span class="info-label">' + r.icon + ' ' + escapeHtml(r.label) + '</span>' +
+      '<span class="info-value">' + escapeHtml(r.value) +
+      (r.copy ? ' <button class="icon-btn" onclick="copyText(\'' + escapeAttr(r.value) + '\')" style="width:22px;height:22px;font-size:11px;margin-left:6px;background:transparent;border:none;padding:0;" title="Copy">📋</button>' : '') +
+      '</span></div>';
+  });
+
+  const statusHtml = '<div class="row wrap" style="gap:8px;margin-bottom:16px;">' +
+    '<span class="badge ' + stageInfo.cls + '" style="font-size:12px;padding:6px 14px;">' + escapeHtml(stageInfo.label) + '</span>' +
+    (c.source === 'public_form' ? '<span class="badge gold">🌐 Public Form</span>' : '') +
+    (c.onHold ? '<span class="badge warning">⏸ On Hold</span>' : '') +
+    '</div>';
+
+  const metaHtml = '<div class="card" style="margin-top:14px;">' +
+    '<div class="card-title" style="margin-bottom:10px;">📌 Meta</div>' +
+    '<div class="info-row"><span class="info-label">Code</span><span class="info-value">' + escapeHtml(c.code || '—') + '</span></div>' +
+    '<div class="info-row"><span class="info-label">Created</span><span class="info-value">' + formatDate(c.createdAt) + '</span></div>' +
+    '<div class="info-row"><span class="info-label">Updated</span><span class="info-value">' + timeAgo(c.updatedAt || c.createdAt) + '</span></div>' +
+    '<div class="info-row"><span class="info-label">Submitted</span><span class="info-value">' + (c.submittedCount || 0) + ' times</span></div>' +
+    '</div>';
+
+  return '<div>' +
+    '<div class="row start" style="gap:12px;margin-bottom:16px;">' +
+      '<div class="avatar lg">' + av + '</div>' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-size:18px;font-weight:700;">' + escapeHtml(c.name || 'Unnamed') + '</div>' +
+        '<div class="text-muted" style="font-size:12px;">' + escapeHtml(c.code || '') + (c.jobProfile ? ' · ' + escapeHtml(c.jobProfile) : '') + '</div>' +
+      '</div>' +
+    '</div>' +
+    statusHtml +
+    '<div class="card">' +
+      '<div class="card-title" style="margin-bottom:10px;">📋 Details</div>' +
+      (rowsHtml || '<div class="text-muted" style="font-size:12px;text-align:center;padding:8px;">No details</div>') +
+    '</div>' +
+    (skillsHtml ? '<div class="card" style="margin-top:14px;"><div class="card-title" style="margin-bottom:10px;">🎯 Skills</div>' + skillsHtml + '</div>' : '') +
+    metaHtml +
+    '</div>';
+}
+
+/* === END PART 37A === */
+/* === START PART 37B === */
+/* ============================================================
+   TAB: MATCH (Companies this candidate matches)
+   ============================================================ */
+function renderCandidateDrawerMatch(c) {
+  const companies = (STATE.cache.companies || []).filter(function(co) {
+    return !co.isDeleted && ['vacancy_open', 'vacancy_reopen'].indexOf(co.stage) !== -1;
+  });
+
+  if (!companies.length) {
+    return '<div class="empty-state" style="padding:40px 20px;">' +
+      '<div class="empty-icon">🎯</div>' +
+      '<div class="empty-title">No open vacancies</div>' +
+      '<div class="empty-message">Companies with active vacancies will appear here.</div>' +
+      '</div>';
+  }
+
+  /* Calculate score for each company's requirements */
+  const matches = [];
+  companies.forEach(function(co) {
+    const reqs = co.requirements || [];
+    reqs.forEach(function(req, reqIdx) {
+      if (req.status === 'closed') return;
+      const score = computeMatchScore(c, req, co);
+      if (score > 0) {
+        matches.push({
+          company: co,
+          req: req,
+          reqIdx: reqIdx,
+          score: score
+        });
+      }
+    });
+  });
+
+  matches.sort(function(a, b) { return b.score - a.score; });
+
+  if (!matches.length) {
+    return '<div class="empty-state" style="padding:40px 20px;">' +
+      '<div class="empty-icon">🔍</div>' +
+      '<div class="empty-title">No matches found</div>' +
+      '<div class="empty-message">Try updating candidate skills or location.</div>' +
+      '</div>';
+  }
+
+  const topMatches = matches.slice(0, 30);
+
+  let html = '<div class="card-title" style="margin-bottom:10px;">🎯 Matched Vacancies (' + matches.length + ')</div>';
+
+  topMatches.forEach(function(m) {
+    html += renderCandidateMatchCard(c.id, m);
+  });
+
+  return '<div>' + html + '</div>';
+}
+
+function renderCandidateMatchCard(candidateId, m) {
+  const co = m.company;
+  const scoreColor = m.score >= 80 ? 'var(--success)' : (m.score >= 60 ? 'var(--warning)' : 'var(--text-muted)');
+
+  return '<div class="card" style="padding:12px;margin-bottom:8px;">' +
+    '<div class="row between" style="gap:8px;margin-bottom:6px;">' +
+      '<div style="flex:1;min-width:0;">' +
+        '<div style="font-size:13px;font-weight:700;color:var(--text-primary);">' + escapeHtml(co.name || 'Unnamed') + '</div>' +
+        '<div class="text-muted" style="font-size:11px;">' + escapeHtml(m.req.profile || 'Untitled') + ' · ' + (m.req.requirementCount || '?') + ' openings</div>' +
+      '</div>' +
+      '<span style="font-size:12px;font-weight:700;color:' + scoreColor + ';">' + m.score + '%</span>' +
+    '</div>' +
+    '<div class="text-muted" style="font-size:11px;line-height:1.6;">' +
+      (co.location ? '📍 ' + escapeHtml(co.location) + '<br>' : '') +
+      (m.req.qualification ? '🎓 ' + escapeHtml(m.req.qualification) + '<br>' : '') +
+      (m.req.maxSalary ? '💰 up to ₹' + escapeHtml(String(m.req.maxSalary)) : '') +
+    '</div>' +
+    '<div class="row" style="gap:6px;margin-top:10px;">' +
+      '<button class="ghost sm" style="flex:1;padding:6px;font-size:11px;" onclick="openCompanyDrawer(\'' + co.id + '\', \'match\')">👁️ View Company</button>' +
+      '<button class="primary sm" style="flex:1;padding:6px;font-size:11px;" onclick="addCandidateToCompanyShortlist(\'' + co.id + '\', \'' + candidateId + '\')">📌 Shortlist</button>' +
+    '</div>' +
+    '</div>';
+}
+
+/* ============================================================
+   ADD CANDIDATE TO COMPANY SHORTLIST (from candidate drawer)
+   ============================================================ */
+async function addCandidateToCompanyShortlist(companyId, candidateId) {
+  try {
+    const c = (STATE.cache.companies || []).find(function(x) { return x.id === companyId; });
+    if (!c) {
+      showToast('error', 'Company not found');
+      return;
+    }
+
+    const list = c.shortlist || [];
+    if (list.indexOf(candidateId) !== -1) {
+      showToast('info', 'Already in shortlist');
+      return;
+    }
+
+    if (list.length >= 20) {
+      showToast('warning', 'Shortlist full (max 20)');
+      return;
+    }
+
+    list.push(candidateId);
+
+    await fbDb.collection('companies').doc(companyId).update({
+      shortlist: list,
+      updatedAt: Date.now()
+    });
+
+    const idx = (STATE.cache.companies || []).findIndex(function(x) { return x.id === companyId; });
+    if (idx >= 0) STATE.cache.companies[idx].shortlist = list;
+
+    showToast('success', 'Added to ' + (c.name || 'company') + ' shortlist');
+    logAuditEvent('shortlist_add', 'company', c.name, 'Candidate added from drawer');
+  } catch (e) {
+    console.error('Add to shortlist failed:', e);
+    showToast('error', 'Failed to add');
+  }
+}
+
+/* === END PART 37B === */
+/* === START PART 37C === */
+/* ============================================================
+   TAB: ACTIONS
+   ============================================================ */
+function renderCandidateDrawerActions(c) {
+  const role = STATE.role;
+  const canEdit = ['MASTER', 'ADMIN', 'EMPLOYEE'].indexOf(role) !== -1;
+  const canDelete = role === 'MASTER';
+
+  const stageSection = '<div class="card" style="margin-bottom:12px;">' +
+    '<div class="card-title" style="margin-bottom:12px;">📊 Stage Management</div>' +
+    '<div class="field" style="margin-bottom:10px;">' +
+      '<label>Change Stage</label>' +
+      '<select onchange="changeCandidateStage(\'' + c.id + '\', this.value)">' +
+        '<option value="">— Choose stage —</option>' +
+        renderCandidateStageOptions(c.stage) +
+      '</select>' +
+    '</div>' +
+    '<div class="row" style="gap:6px;flex-wrap:wrap;">' +
+      '<button class="ghost sm" onclick="toggleCandidateOnHold(\'' + c.id + '\')">' + (c.onHold ? '▶️ Remove Hold' : '⏸ Put On Hold') + '</button>' +
+    '</div>' +
+    '</div>';
+
+  const workflowSection = canEdit ? '<div class="card" style="margin-bottom:12px;">' +
+    '<div class="card-title" style="margin-bottom:12px;">🔄 Workflow</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+      '<button class="primary sm" onclick="openEditCandidateModal(\'' + c.id + '\')">✏️ Edit Details</button>' +
+      '<button class="success sm" onclick="markCandidatePlaced(\'' + c.id + '\')">✅ Mark Placed</button>' +
+      '<button class="warning sm" onclick="markCandidateReplaced(\'' + c.id + '\')">🔄 Mark Replaced</button>' +
+      '<button class="gold sm" onclick="openAddTaskModal(null)">📌 Add Task</button>' +
+    '</div>' +
+    '</div>' : '';
+
+  const stateSection = canEdit ? '<div class="card" style="margin-bottom:12px;">' +
+    '<div class="card-title" style="margin-bottom:12px;">📁 State</div>' +
+    '<div class="row" style="gap:6px;flex-wrap:wrap;">' +
+      '<button class="ghost sm" onclick="archiveCandidate(\'' + c.id + '\')">📦 Archive</button>' +
+      '<button class="ghost sm" onclick="dropCandidate(\'' + c.id + '\')">🚫 Drop</button>' +
+      (['MASTER', 'ADMIN'].indexOf(role) !== -1 ? '<button class="danger sm" onclick="blacklistCandidate(\'' + c.id + '\')">⛔ Blacklist</button>' : '') +
+    '</div>' +
+    '</div>' : '';
+
+  const dangerSection = canDelete ? '<div class="card" style="border-color:var(--error-border);background:var(--error-bg);">' +
+    '<div class="card-title" style="color:var(--error);margin-bottom:12px;">⚠️ Danger Zone</div>' +
+    '<button class="danger block sm" onclick="deleteCandidate(\'' + c.id + '\')">🗑️ Delete Candidate</button>' +
+    '</div>' : '';
+
+  return '<div>' + stageSection + workflowSection + stateSection + dangerSection + '</div>';
+}
+
+/* ============================================================
+   STAGE OPTIONS (for candidate)
+   ============================================================ */
+function renderCandidateStageOptions(current) {
+  const stages = [
+    ['pending', '⏳ Pending'],
+    ['active', 'Active'],
+    ['submitted', 'Submitted'],
+    ['interview', 'Interview'],
+    ['selected', 'Selected'],
+    ['placed', 'Placed'],
+    ['post_placement', 'Post Placement'],
+    ['replaced', 'Replaced'],
+    ['dropped', 'Dropped']
+  ];
+  let html = '';
+  stages.forEach(function(pair) {
+    const v = pair[0], l = pair[1];
+    html += '<option value="' + v + '"' + (current === v ? ' selected' : '') + '>' + l + '</option>';
+  });
+  return html;
+}
+
+/* ============================================================
+   CHANGE CANDIDATE STAGE
+   ============================================================ */
+async function changeCandidateStage(cid, newStage) {
+  if (!newStage) return;
+  const reason = prompt('Reason for moving to "' + newStage + '"?');
+  if (reason === null) return;
+
+  try {
+    const c = (STATE.cache.candidates || []).find(function(x) { return x.id === cid; });
+    if (!c) return;
+
+    const updates = {
+      stage: newStage,
+      lastActiveAt: Date.now(),
+      updatedAt: Date.now()
+    };
+
+    /* If marked placed, require joining date */
+    if (newStage === 'placed' && !c.joiningDate) {
+      const joinDate = prompt('Joining date (YYYY-MM-DD)?');
+      if (joinDate && /^\d{4}-\d{2}-\d{2}$/.test(joinDate)) {
+        updates.joiningDate = new Date(joinDate).getTime();
+      }
+    }
+
+    await fbDb.collection('candidates').doc(cid).update(updates);
+
+    const idx = (STATE.cache.candidates || []).findIndex(function(x) { return x.id === cid; });
+    if (idx >= 0) Object.assign(STATE.cache.candidates[idx], updates);
+
+    logAuditEvent('stage_change', 'candidate', c.name, '→ ' + newStage + (reason ? ' (' + reason + ')' : ''));
+    showToast('success', 'Stage updated');
+    openCandidateDrawer(cid, 'actions');
+  } catch (e) {
+    console.error('Stage change failed:', e);
+    showToast('error', 'Failed to update');
+  }
+}
+
+/* ============================================================
+   TOGGLE ON HOLD
+   ============================================================ */
+async function toggleCandidateOnHold(cid) {
+  try {
+    const c = (STATE.cache.candidates || []).find(function(x) { return x.id === cid; });
+    if (!c) return;
+
+    const newVal = !c.onHold;
+    let reason = '';
+    if (newVal) {
+      reason = prompt('Reason for putting on hold?') || '';
+      if (reason === null) return;
+    }
+
+    await fbDb.collection('candidates').doc(cid).update({
+      onHold: newVal,
+      holdReason: newVal ? reason : '',
+      updatedAt: Date.now()
+    });
+
+    const idx = (STATE.cache.candidates || []).findIndex(function(x) { return x.id === cid; });
+    if (idx >= 0) {
+      STATE.cache.candidates[idx].onHold = newVal;
+      STATE.cache.candidates[idx].holdReason = reason;
+    }
+
+    logAuditEvent(newVal ? 'hold' : 'unhold', 'candidate', c.name, reason);
+    showToast('success', newVal ? 'Marked on hold' : 'Hold removed');
+    openCandidateDrawer(cid, 'actions');
+  } catch (e) {
+    showToast('error', 'Failed to update');
+  }
+}
+
+/* ============================================================
+   MARK PLACED
+   ============================================================ */
+async function markCandidatePlaced(cid) {
+  const c = (STATE.cache.candidates || []).find(function(x) { return x.id === cid; });
+  if (!c) return;
+
+  const joinDate = prompt('Joining date (YYYY-MM-DD)?');
+  if (!joinDate) return;
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(joinDate)) {
+    showToast('warning', 'Format: YYYY-MM-DD');
+    return;
+  }
+
+  if (!confirm('Mark ' + c.name + ' as PLACED?')) return;
+
+  try {
+    const joinTs = new Date(joinDate).getTime();
+
+    await fbDb.collection('candidates').doc(cid).update({
+      stage: 'placed',
+      joiningDate: joinTs,
+      placedAt: Date.now(),
+      lastActiveAt: Date.now(),
+      updatedAt: Date.now()
+    });
+
+    const idx = (STATE.cache.candidates || []).findIndex(function(x) { return x.id === cid; });
+    if (idx >= 0) {
+      STATE.cache.candidates[idx].stage = 'placed';
+      STATE.cache.candidates[idx].joiningDate = joinTs;
+    }
+
+    logAuditEvent('mark_placed', 'candidate', c.name, 'Joined: ' + joinDate);
+    showToast('success', c.name + ' marked as placed');
+    openCandidateDrawer(cid, 'actions');
+  } catch (e) {
+    showToast('error', 'Failed to update');
+  }
+}
+
+/* ============================================================
+   MARK REPLACED
+   ============================================================ */
+async function markCandidateReplaced(cid) {
+  const c = (STATE.cache.candidates || []).find(function(x) { return x.id === cid; });
+  if (!c) return;
+
+  const reason = prompt('Reason for replacement?');
+  if (reason === null) return;
+
+  if (!confirm('Mark ' + c.name + ' as REPLACED?')) return;
+
+  try {
+    await fbDb.collection('candidates').doc(cid).update({
+      stage: 'replaced',
+      replacedAt: Date.now(),
+      replacedReason: reason || 'Not specified',
+      updatedAt: Date.now()
+    });
+
+    const idx = (STATE.cache.candidates || []).findIndex(function(x) { return x.id === cid; });
+    if (idx >= 0) STATE.cache.candidates[idx].stage = 'replaced';
+
+    logAuditEvent('mark_replaced', 'candidate', c.name, reason || '');
+    showToast('success', 'Marked as replaced');
+    openCandidateDrawer(cid, 'actions');
+  } catch (e) {
+    showToast('error', 'Failed to update');
+  }
+}
+
+/* ============================================================
+   ARCHIVE / DROP / BLACKLIST / DELETE
+   ============================================================ */
+async function archiveCandidate(cid) {
+  const reason = prompt('Reason for archiving?');
+  if (reason === null || !reason.trim()) return;
+
+  try {
+    const c = (STATE.cache.candidates || []).find(function(x) { return x.id === cid; });
+    if (!c) return;
+
+    await fbDb.collection('candidates').doc(cid).update({
+      isArchived: true,
+      stage: 'archived',
+      archivedAt: Date.now(),
+      archivedBy: STATE.user.uid,
+      archivedReason: reason,
+      updatedAt: Date.now()
+    });
+
+    logAuditEvent('archive', 'candidate', c.name, reason);
+    showToast('success', 'Candidate archived');
+    closeAllDrawers();
+    if (STATE.currentPage === 'candidates') loadCandidatesAndRender();
+  } catch (e) {
+    showToast('error', 'Failed to archive');
+  }
+}
+
+async function dropCandidate(cid) {
+  const reason = prompt('Reason for dropping?');
+  if (reason === null || !reason.trim()) return;
+
+  try {
+    const c = (STATE.cache.candidates || []).find(function(x) { return x.id === cid; });
+    if (!c) return;
+
+    await fbDb.collection('candidates').doc(cid).update({
+      stage: 'dropped',
+      droppedAt: Date.now(),
+      droppedBy: STATE.user.uid,
+      droppedReason: reason,
+      updatedAt: Date.now()
+    });
+
+    logAuditEvent('drop', 'candidate', c.name, reason);
+    showToast('success', 'Candidate dropped');
+    closeAllDrawers();
+    if (STATE.currentPage === 'candidates') loadCandidatesAndRender();
+  } catch (e) {
+    showToast('error', 'Failed to drop');
+  }
+}
+
+async function blacklistCandidate(cid) {
+  const reasons = ['Fake profile', 'Fraud', 'Bad behavior', 'No-show', 'Multiple submissions', 'Other'];
+  const reasonList = reasons.map(function(r, i) { return (i + 1) + '. ' + r; }).join('\n');
+  const choice = prompt('Blacklist reason:\n\n' + reasonList + '\n\nType the reason:');
+  if (choice === null || !choice.trim()) return;
+
+  if (!confirm('⛔ BLACKLIST this candidate? Only MASTER can un-blacklist.')) return;
+  if (!confirm('Are you absolutely sure?')) return;
+
+  try {
+    const c = (STATE.cache.candidates || []).find(function(x) { return x.id === cid; });
+    if (!c) return;
+
+    await fbDb.collection('candidates').doc(cid).update({
+      isBlacklisted: true,
+      stage: 'blacklisted',
+      blacklistedAt: Date.now(),
+      blacklistedBy: STATE.user.uid,
+      blacklistedReason: choice,
+      updatedAt: Date.now()
+    });
+
+    logAuditEvent('blacklist', 'candidate', c.name, choice);
+    showToast('success', 'Candidate blacklisted');
+    closeAllDrawers();
+    if (STATE.currentPage === 'candidates') loadCandidatesAndRender();
+  } catch (e) {
+    showToast('error', 'Failed to blacklist');
+  }
+}
+
+async function deleteCandidate(cid) {
+  const c = (STATE.cache.candidates || []).find(function(x) { return x.id === cid; });
+  if (!c) return;
+
+  const typed = prompt('Type "DELETE" to confirm removal of ' + c.name + ':');
+  if (typed !== 'DELETE') {
+    showToast('warning', 'Cancelled');
+    return;
+  }
+
+  try {
+    await fbDb.collection('candidates').doc(cid).update({
+      isDeleted: true,
+      deletedAt: Date.now(),
+      deletedBy: STATE.user.uid,
+      deletedByName: STATE.user.name
+    });
+
+    logAuditEvent('delete', 'candidate', c.name, 'Soft delete');
+    showToast('success', 'Candidate deleted');
+    closeAllDrawers();
+    if (STATE.currentPage === 'candidates') loadCandidatesAndRender();
+  } catch (e) {
+    showToast('error', 'Failed to delete');
+  }
+}
+
+/* === END PART 37C === */
+/* === START PART 38 === */
+/* ============================================================
+   EDIT CANDIDATE MODAL
+   ============================================================ */
+function openEditCandidateModal(cid) {
+  const c = (STATE.cache.candidates || []).find(function(x) { return x.id === cid; });
+  if (!c) {
+    showToast('error', 'Candidate not found');
+    return;
+  }
+
+  const expType = c.experienceType || 'fresher';
+  const isFresher = expType === 'fresher';
+
+  const skillsStr = Array.isArray(c.skills) ? c.skills.join(', ') : (c.skills || '');
+
+  const html = `
+    <div class="form-section">
+      <div class="form-section-title">👤 Basic Info</div>
+      <div class="field">
+        <label>Full Name <span class="required">*</span></label>
+        <input type="text" id="ecName" value="${escapeAttr(c.name || '')}">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Phone <span class="required">*</span></label>
+          <input type="tel" id="ecPhone" value="${escapeAttr(c.phone || '')}" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label>Email <span class="required">*</span></label>
+          <input type="email" id="ecEmail" value="${escapeAttr(c.email || '')}" inputmode="email">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Experience Type <span class="required">*</span></label>
+          <select id="ecExpType" onchange="toggleEditCandidateExpFields(this.value)">
+            <option value="fresher"${isFresher ? ' selected' : ''}>Fresher</option>
+            <option value="experience"${!isFresher ? ' selected' : ''}>Experienced</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Experience (years)</label>
+          <input type="number" id="ecExpYears" value="${escapeAttr(c.experience || '')}" min="0" max="50"${isFresher ? ' disabled' : ''}>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">💼 Professional</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Job Profile</label>
+          <input type="text" id="ecJobProfile" value="${escapeAttr(c.jobProfile || '')}">
+        </div>
+        <div class="field">
+          <label>Qualification</label>
+          <input type="text" id="ecQualification" value="${escapeAttr(c.qualification || '')}">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Last Salary (₹/month)</label>
+          <input type="number" id="ecLastSalary" value="${escapeAttr(c.lastSalary || '')}"${isFresher ? ' disabled' : ''}>
+        </div>
+        <div class="field">
+          <label>Expected Salary (₹/month)</label>
+          <input type="number" id="ecExpectedSalary" value="${escapeAttr(c.expectedSalary || '')}">
+        </div>
+      </div>
+      <div class="field">
+        <label>Skills (comma separated)</label>
+        <input type="text" id="ecSkills" value="${escapeAttr(skillsStr)}">
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">📍 Location & Notes</div>
+      <div class="field">
+        <label>Location (City)</label>
+        <input type="text" id="ecLocation" value="${escapeAttr(c.location || '')}">
+      </div>
+      <div class="field">
+        <label>Full Address</label>
+        <input type="text" id="ecAddress" value="${escapeAttr(c.address || '')}">
+      </div>
+      <div class="field">
+        <label>Notes</label>
+        <textarea id="ecNotes" rows="2">${escapeHtml(c.notes || '')}</textarea>
+      </div>
+    </div>
+
+    <div id="ecMessage" class="auth-message"></div>
+  `;
+
+  const footer = `
+    <button class="ghost" onclick="closeAllModals()">Cancel</button>
+    <button class="primary" id="ecSaveBtn" onclick="saveEditedCandidate('${cid}')">💾 Save Changes</button>
+  `;
+
+  openModal(html, { title: '✏️ Edit Candidate', size: 'lg', footerHtml: footer });
+}
+
+function toggleEditCandidateExpFields(type) {
+  const yearsEl = $id('ecExpYears');
+  const lastSalEl = $id('ecLastSalary');
+
+  if (type === 'fresher') {
+    if (yearsEl) { yearsEl.disabled = true; yearsEl.value = ''; }
+    if (lastSalEl) { lastSalEl.disabled = true; lastSalEl.value = ''; }
+  } else {
+    if (yearsEl) yearsEl.disabled = false;
+    if (lastSalEl) lastSalEl.disabled = false;
+  }
+}
+
+/* ============================================================
+   SAVE EDITED CANDIDATE
+   ============================================================ */
+async function saveEditedCandidate(cid) {
+  hideAuthMessage('ecMessage');
+
+  const nameEl = $id('ecName');
+  const phoneEl = $id('ecPhone');
+  const emailEl = $id('ecEmail');
+  const expTypeEl = $id('ecExpType');
+  const expYearsEl = $id('ecExpYears');
+  const jobProfEl = $id('ecJobProfile');
+  const qualEl = $id('ecQualification');
+  const lastSalEl = $id('ecLastSalary');
+  const expSalEl = $id('ecExpectedSalary');
+  const skillsEl = $id('ecSkills');
+  const locEl = $id('ecLocation');
+  const addrEl = $id('ecAddress');
+  const notesEl = $id('ecNotes');
+  const btn = $id('ecSaveBtn');
+
+  const expType = expTypeEl ? expTypeEl.value : 'fresher';
+
+  let skillsArr = [];
+  if (skillsEl && skillsEl.value.trim()) {
+    skillsArr = skillsEl.value.split(',').map(function(s) {
+      return s.trim();
+    }).filter(Boolean);
+  }
+
+  const data = {
+    name: (nameEl ? nameEl.value : '').trim(),
+    phone: (phoneEl ? phoneEl.value : '').trim(),
+    email: (emailEl ? emailEl.value : '').trim().toLowerCase(),
+    experienceType: expType,
+    experience: expType === 'experience' ? ((expYearsEl ? expYearsEl.value : '') || '') : '',
+    jobProfile: (jobProfEl ? jobProfEl.value : '').trim(),
+    qualification: (qualEl ? qualEl.value : '').trim(),
+    lastSalary: expType === 'experience' ? ((lastSalEl ? lastSalEl.value : '') || '') : '',
+    expectedSalary: (expSalEl ? expSalEl.value : '') || '',
+    skills: skillsArr,
+    location: (locEl ? locEl.value : '').trim(),
+    address: (addrEl ? addrEl.value : '').trim(),
+    notes: (notesEl ? notesEl.value : '').trim()
+  };
+
+  /* Validation */
+  if (!data.name || data.name.length < 2) {
+    showAuthMessage('ecMessage', 'Name required', 'error');
+    return;
+  }
+  if (!data.phone || data.phone.replace(/\D/g, '').length < 10) {
+    showAuthMessage('ecMessage', 'Valid 10-digit phone required', 'error');
+    return;
+  }
+  if (!validateEmail(data.email)) {
+    showAuthMessage('ecMessage', 'Valid email required', 'error');
+    return;
+  }
+
+  if (!fbReady || !fbDb) {
+    showAuthMessage('ecMessage', 'Connection error. Try again.', 'error');
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+
+  try {
+    /* Update normalization fields */
+    data.nameNormalized = normalizeName(data.name);
+    data.phoneNormalized = normalizePhone(data.phone);
+    data.emailNormalized = normalizeEmail(data.email);
+    data.updatedAt = Date.now();
+    data.lastActiveAt = Date.now();
+
+    await fbDb.collection('candidates').doc(cid).update(data);
+
+    /* Local cache update */
+    const idx = (STATE.cache.candidates || []).findIndex(function(x) { return x.id === cid; });
+    if (idx >= 0) Object.assign(STATE.cache.candidates[idx], data);
+
+    logAuditEvent('update', 'candidate', data.name, 'Profile edited');
+    showToast('success', 'Candidate updated');
+    closeAllModals();
+
+    /* Refresh list if open */
+    if (STATE.currentPage === 'candidates') {
+      loadCandidatesAndRender();
+    }
+
+    /* Refresh drawer if open */
+    if (STATE.activeDrawer) {
+      openCandidateDrawer(cid, 'profile');
+    }
+  } catch (e) {
+    console.error('Save edited candidate failed:', e);
+    showAuthMessage('ecMessage', '❌ ' + (e.message || 'Failed to save'), 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save Changes'; }
+  }
+}
+
+/* === END PART 38 === */
     /* === START PART 36 === */
 /* ============================================================
    ADD COMPANY MODAL
@@ -13810,51 +14695,240 @@ async function saveProfileChanges() {
   }
 }
 
+/* === END PART 42 === */
+/* === START PART 46A (Settings — Main + General tab) === */
 /* ============================================================
-   PAGE: SETTINGS (placeholder for now)
+   SETTINGS — MAIN PAGE (17 tabs)
    ============================================================ */
+const SETTINGS_STATE = {
+  activeTab: 'general',
+  cache: {}
+};
+
+const SETTINGS_TABS = [
+  { id: 'general', label: 'General', icon: '⚙️' },
+  { id: 'email', label: 'Email Config', icon: '📧' },
+  { id: 'templates', label: 'Email Templates', icon: '📝' },
+  { id: 'fu', label: 'FU Settings', icon: '📞' },
+  { id: 'dropdowns', label: 'Dropdowns', icon: '📋' },
+  { id: 'spam', label: 'Spam Words', icon: '🚫' },
+  { id: 'archive', label: 'Archive', icon: '📦' },
+  { id: 'category', label: 'Category Filter', icon: '🏷️' },
+  { id: 'security', label: 'Security', icon: '🔒' },
+  { id: 'notifications', label: 'Notifications', icon: '🔔' },
+  { id: 'worker', label: 'Worker Settings', icon: '🔧' },
+  { id: 'sheets', label: 'Google Sheets', icon: '📊' },
+  { id: 'formfields', label: 'Form Fields', icon: '📄' },
+  { id: 'apikeys', label: 'API Keys', icon: '🔑' },
+  { id: 'shortlist', label: 'Shortlist Config', icon: '🎯' },
+  { id: 'inquiry', label: 'Inquiry Config', icon: '📥' },
+  { id: 'advanced', label: 'Advanced', icon: '🛠️' }
+];
+
 function renderSettingsPage() {
   const role = STATE.role;
 
   if (role !== 'MASTER' && role !== 'ADMIN') {
-    return `
-      <div class="empty-state">
-        <div class="empty-icon">🔒</div>
-        <div class="empty-title">Settings Access</div>
-        <div class="empty-message">Only MASTER and ADMIN can access settings.</div>
-      </div>
-    `;
+    return '<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-title">Access Denied</div><div class="empty-message">Only MASTER and ADMIN can access settings.</div></div>';
   }
+
+  const isMaster = role === 'MASTER';
+
+  let tabsHtml = '';
+  SETTINGS_TABS.forEach(function(t) {
+    const isActive = SETTINGS_STATE.activeTab === t.id;
+    tabsHtml += '<button class="settings-tab ' + (isActive ? 'active' : '') + '" onclick="switchSettingsTab(\'' + t.id + '\')">' +
+      '<span style="font-size:14px;">' + t.icon + '</span>' +
+      '<span>' + escapeHtml(t.label) + '</span>' +
+      '</button>';
+  });
 
   return `
     <div>
-      <h1 style="font-size:22px;font-weight:600;letter-spacing:-0.015em;margin:0 0 4px;">Settings</h1>
-      <p class="text-muted" style="font-size:13px;margin-bottom:20px;">App configuration & preferences</p>
-
-      <div class="card flat">
-        <div class="empty-state" style="padding:40px 20px;">
-          <div class="empty-icon">⚙️</div>
-          <div class="empty-title">Settings — Coming Soon</div>
-          <div class="empty-message">
-            17 config tabs (General, Email, FU, Dropdowns, Security, etc.)
-            will be added in the next parts.
-          </div>
+      <div class="row between wrap" style="margin-bottom:16px;gap:12px;">
+        <div>
+          <h1 style="font-size:22px;font-weight:600;letter-spacing:-0.015em;margin:0;">Settings</h1>
+          <p class="text-muted" style="font-size:12px;margin-top:2px;">
+            ${isMaster ? 'Full access · MASTER' : 'Limited access · ADMIN (read-only)'}
+          </p>
         </div>
       </div>
 
-      <div class="card flat" style="margin-top:16px;">
-        <div class="card-title" style="margin-bottom:10px;">🧪 Quick Test</div>
-        <div class="row" style="gap:8px;flex-wrap:wrap;">
-          <button class="ghost sm" onclick="showToast('info', 'Test toast')">Test Toast</button>
-          <button class="ghost sm" onclick="openModal('<p>Test modal content</p>', {title:'Test Modal'})">Test Modal</button>
-          <button class="ghost sm" onclick="openDrawer('<p>Test drawer content</p>', {title:'Test Drawer', size:'sm'})">Test Drawer</button>
+      <div class="settings-layout">
+        <div class="settings-sidebar" id="settingsSidebar">
+          ${tabsHtml}
+        </div>
+        <div class="settings-content" id="settingsContent">
+          <div class="loading-block"><div class="spinner"></div><div>Loading...</div></div>
         </div>
       </div>
     </div>
   `;
 }
 
-/* === END PART 42 === */
+function switchSettingsTab(tabId) {
+  SETTINGS_STATE.activeTab = tabId;
+
+  $$('.settings-tab').forEach(function(el) {
+    const label = el.textContent.trim();
+    const isActive = el.getAttribute('onclick').indexOf("'" + tabId + "'") !== -1;
+    el.classList.toggle('active', isActive);
+  });
+
+  loadSettingsTab(tabId);
+}
+
+async function loadSettingsTab(tabId) {
+  const container = $id('settingsContent');
+  if (!container) return;
+
+  container.innerHTML = '<div class="loading-block"><div class="spinner"></div><div>Loading...</div></div>';
+
+  try {
+    let html = '';
+    switch (tabId) {
+      case 'general':       html = renderSettingsGeneral(); break;
+      case 'email':         html = renderSettingsEmail(); break;
+      case 'templates':     html = renderSettingsTemplates(); break;
+      case 'fu':            html = renderSettingsFU(); break;
+      case 'dropdowns':     html = renderSettingsDropdowns(); break;
+      case 'spam':          html = renderSettingsSpam(); break;
+      case 'archive':       html = renderSettingsArchive(); break;
+      case 'category':      html = renderSettingsCategory(); break;
+      case 'security':      html = renderSettingsSecurity(); break;
+      case 'notifications': html = renderSettingsNotifications(); break;
+      case 'worker':        html = renderSettingsWorker(); break;
+      case 'sheets':        html = renderSettingsSheets(); break;
+      case 'formfields':    html = renderSettingsFormFields(); break;
+      case 'apikeys':       html = renderSettingsApiKeys(); break;
+      case 'shortlist':     html = renderSettingsShortlist(); break;
+      case 'inquiry':       html = renderSettingsInquiry(); break;
+      case 'advanced':      html = renderSettingsAdvanced(); break;
+      default:              html = '<div class="text-muted" style="padding:40px;text-align:center;">Unknown tab</div>';
+    }
+    container.innerHTML = html;
+  } catch (e) {
+    console.error('Settings tab failed:', tabId, e);
+    container.innerHTML = '<div class="empty-state error"><div class="empty-icon">⚠️</div><div>' + escapeHtml(e.message || 'Error') + '</div></div>';
+  }
+}
+
+/* ============================================================
+   TAB: GENERAL
+   ============================================================ */
+function renderSettingsGeneral() {
+  const isMaster = STATE.role === 'MASTER';
+  const disableAttr = isMaster ? '' : 'disabled';
+
+  return `
+    <div class="form-section">
+      <div class="form-section-title">🏢 Company Info</div>
+      <div class="field">
+        <label>Company Name</label>
+        <input type="text" id="setCompanyName" value="Seven Horses Manpower Solutions" ${disableAttr}>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Contact Email</label>
+          <input type="email" id="setContactEmail" value="sevenhorsescrm@gmail.com" ${disableAttr}>
+        </div>
+        <div class="field">
+          <label>Contact Phone</label>
+          <input type="tel" id="setContactPhone" placeholder="+91 ..." ${disableAttr}>
+        </div>
+      </div>
+      <div class="field">
+        <label>Website</label>
+        <input type="url" id="setWebsite" placeholder="https://..." ${disableAttr}>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">🏷️ Prefixes</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Company Code Prefix</label>
+          <input type="text" id="setPrefixCompany" value="COM" maxlength="4" ${disableAttr}>
+        </div>
+        <div class="field">
+          <label>Candidate Code Prefix</label>
+          <input type="text" id="setPrefixCandidate" value="CAN" maxlength="4" ${disableAttr}>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Employee Code Prefix</label>
+          <input type="text" id="setPrefixEmployee" value="EMP" maxlength="4" ${disableAttr}>
+        </div>
+        <div class="field">
+          <label>Invoice Prefix</label>
+          <input type="text" id="setPrefixInvoice" value="INV" maxlength="4" ${disableAttr}>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">✍️ Signatures</div>
+      <div class="field">
+        <label>Default Email Signature</label>
+        <textarea id="setDefaultSignature" rows="4" placeholder="Regards,\nSeven Horses Manpower Solutions" ${disableAttr}></textarea>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">💾 Backup</div>
+      <div class="info-row">
+        <span class="info-label">Last Backup</span>
+        <span class="info-value" id="setLastBackup">Loading...</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Auto Backup</span>
+        <span class="info-value">Daily at 2 AM (Worker)</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Retention</span>
+        <span class="info-value">Last 4 snapshots</span>
+      </div>
+    </div>
+
+    ${isMaster ? `
+      <div class="row" style="gap:8px;margin-top:16px;">
+        <button class="primary" onclick="saveSettingsGeneral()">💾 Save General Settings</button>
+      </div>
+    ` : '<div class="card flat" style="margin-top:16px;background:var(--bg-subtle);"><div class="text-muted" style="font-size:12px;">🔒 Read-only — Only MASTER can edit</div></div>'}
+  `;
+}
+
+async function saveSettingsGeneral() {
+  if (STATE.role !== 'MASTER') {
+    showToast('warning', 'Only MASTER can save');
+    return;
+  }
+
+  const data = {
+    companyName: ($id('setCompanyName') || {}).value || '',
+    contactEmail: ($id('setContactEmail') || {}).value || '',
+    contactPhone: ($id('setContactPhone') || {}).value || '',
+    website: ($id('setWebsite') || {}).value || '',
+    prefixCompany: ($id('setPrefixCompany') || {}).value || 'COM',
+    prefixCandidate: ($id('setPrefixCandidate') || {}).value || 'CAN',
+    prefixEmployee: ($id('setPrefixEmployee') || {}).value || 'EMP',
+    prefixInvoice: ($id('setPrefixInvoice') || {}).value || 'INV',
+    defaultSignature: ($id('setDefaultSignature') || {}).value || '',
+    updatedAt: Date.now()
+  };
+
+  try {
+    await fbDb.collection('config').doc('general').set(data, { merge: true });
+    logAuditEvent('settings_update', 'config', 'general', '');
+    showToast('success', 'General settings saved');
+  } catch (e) {
+    console.error('Save general failed:', e);
+    showToast('error', 'Failed to save');
+  }
+}
+
+/* === END PART 46A === */
     /* === START PART 43 === */
 /* ============================================================
    PAGE: CALENDAR
