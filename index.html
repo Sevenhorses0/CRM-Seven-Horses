@@ -19621,6 +19621,7 @@ const ENABLE_ICON_REPLACER = true;
 let _replacing = false;
 let _emojiRegexGlobal = null;
 let _emojiRegexSingle = null;
+    _buildEmojiRegex();
 
 function _buildEmojiRegex() {
   const keys = Object.keys(EMOJI_TO_ICON).sort(function(a, b) { return b.length - a.length; });
@@ -19709,7 +19710,40 @@ if (document.readyState === 'loading') {
 } else {
   setTimeout(initEmojiReplacer, 400);
 }
-  
+  /* === INSTALL innerHTML PREPROCESSOR (no flash) === */
+(function installIconPreprocessor() {
+  if (window._iconPreprocessorInstalled) return;
+  window._iconPreprocessorInstalled = true;
+  if (!_emojiRegexGlobal) _buildEmojiRegex();
+  const desc = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+  if (!desc || !desc.set) return;
+  const origSet = desc.set;
+  const origGet = desc.get;
+  Object.defineProperty(Element.prototype, 'innerHTML', {
+    configurable: true,
+    get: function() { return origGet.call(this); },
+    set: function(html) {
+      if (typeof html === 'string' && html.length && _emojiRegexGlobal) {
+        _emojiRegexGlobal.lastIndex = 0;
+        if (_emojiRegexGlobal.test(html)) {
+          _emojiRegexGlobal.lastIndex = 0;
+          html = html.replace(_emojiRegexGlobal, function(match) {
+            const name = EMOJI_TO_ICON[match];
+            return name ? '<i data-lucide="' + name + '" class="sh-icon"></i>' : match;
+          });
+        }
+      }
+      origSet.call(this, html);
+      if (typeof html === 'string' && html.indexOf('data-lucide') !== -1 && window.lucide) {
+        setTimeout(function() {
+          try { window.lucide.createIcons(); } catch (e) {}
+        }, 0);
+      }
+    }
+  });
+})();
+    
+/* === END INSTALL innerHTML PREPROCESSOR === */
 /* === END ICON REPLACER === */
 /* ============================================================
    END PART 45 — APP COMPLETE
