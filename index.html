@@ -26,7 +26,7 @@
 
 <!-- jsPDF for PDF generation -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
+<script src="https://unpkg.com/lucide@0.454.0/dist/umd/lucide.js"></script>
 <style>
 /* ============================================================
    SEVEN HORSES — LUXURY NAVY GOLD THEME
@@ -3457,6 +3457,42 @@ a.plain:hover {
     padding: 16px;
   }
 }
+  /* ============================================================
+   LUCIDE ICON STYLES (premium SVG icons)
+   ============================================================ */
+.sh-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.15em;
+  flex-shrink: 0;
+  stroke-width: 2;
+}
+
+svg.lucide {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.15em;
+  flex-shrink: 0;
+  stroke-width: 2;
+}
+
+.nav-icon svg.lucide { width: 18px; height: 18px; }
+button svg.lucide, .btn svg.lucide { width: 14px; height: 14px; }
+.badge svg.lucide { width: 11px; height: 11px; }
+.empty-icon svg.lucide { width: 48px; height: 48px; stroke-width: 1.5; }
+.toast-icon svg.lucide { width: 16px; height: 16px; }
+.header-icon-btn svg.lucide { width: 18px; height: 18px; }
+.header-brand-logo svg.lucide,
+.auth-logo svg.lucide,
+.loading-screen-logo svg.lucide,
+.sidebar-brand-logo svg.lucide { width: 24px; height: 24px; }
+  
 /* === END SETTINGS CSS === */
 
 /* ============================================================
@@ -19551,6 +19587,130 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
+/* === START ICON REPLACER === */
+/* ============================================================
+   EMOJI → LUCIDE PREMIUM ICON REPLACER
+   ============================================================ */
+const EMOJI_TO_ICON = {
+  '🏠':'home','🏢':'building-2','👥':'users','📅':'calendar','✅':'circle-check',
+  '🔎':'search','📋':'clipboard-list','👤':'user','👁️':'eye','👁':'eye',
+  '📈':'trending-up','🏆':'trophy','💰':'banknote','📜':'scroll','📥':'inbox',
+  '🎯':'target','📤':'upload','📊':'bar-chart-3','🔍':'search','⚙️':'settings',
+  '🔐':'lock-keyhole','🛡️':'shield','💬':'message-circle','⏱️':'timer',
+  '🚀':'rocket','📱':'smartphone',
+  '➕':'plus','✏️':'pencil','🗑️':'trash-2','💾':'save','🔄':'refresh-cw',
+  '📞':'phone','📧':'mail','✉️':'mail','📎':'paperclip','📌':'pin',
+  '⏰':'alarm-clock','⏸':'pause','▶':'play','⏹':'square','🔀':'shuffle',
+  '↺':'rotate-ccw','🎲':'dices','🔑':'key','🔒':'lock','🩺':'stethoscope',
+  '🧪':'flask-conical','🎚️':'sliders-horizontal','🛠️':'wrench','🗂️':'folder-tree',
+  '✍️':'pen-line','📸':'camera','💳':'credit-card','📄':'file-text',
+  '🚪':'door-open','📢':'megaphone',
+  '⏳':'hourglass','⚠️':'triangle-alert','❌':'circle-x','🔥':'flame',
+  '🌐':'globe','🔶':'square','✓':'check','✗':'x','↩':'corner-up-left',
+  '▶️':'play','🔴':'circle','🚧':'construction','♻️':'refresh-ccw',
+  '💼':'briefcase','🎓':'graduation-cap','💵':'banknote','📍':'map-pin',
+  '🏭':'factory','📝':'file-pen','🏷️':'tag','📦':'package','🗄️':'database',
+  '🔔':'bell','🚨':'siren','🛑':'octagon-alert','📨':'send','💡':'lightbulb',
+  '🕐':'clock','⚡':'zap','🔕':'bell-off',
+  '🎉':'party-popper','🎊':'sparkles','🚫':'ban','⛔':'octagon-alert',
+  '❓':'help-circle','ℹ️':'info','📉':'trending-down','🌟':'star','⭐':'star',
+  '✨':'sparkles','📷':'camera','🖼️':'image','🎨':'palette'
+};
+
+const ENABLE_ICON_REPLACER = true;
+let _replacing = false;
+let _emojiRegexGlobal = null;
+let _emojiRegexSingle = null;
+
+function _buildEmojiRegex() {
+  const keys = Object.keys(EMOJI_TO_ICON).sort(function(a, b) { return b.length - a.length; });
+  const pattern = keys.map(function(k) {
+    return k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }).join('|');
+  _emojiRegexGlobal = new RegExp('(' + pattern + ')', 'g');
+  _emojiRegexSingle = new RegExp('(' + pattern + ')');
+}
+
+function _replaceEmojiInTextNode(textNode) {
+  const text = textNode.nodeValue;
+  if (!text) return;
+  _emojiRegexGlobal.lastIndex = 0;
+  let match, lastIndex = 0, hasMatch = false;
+  const fragments = [];
+  while ((match = _emojiRegexGlobal.exec(text)) !== null) {
+    hasMatch = true;
+    if (match.index > lastIndex) {
+      fragments.push(document.createTextNode(text.slice(lastIndex, match.index)));
+    }
+    const icon = document.createElement('i');
+    icon.setAttribute('data-lucide', EMOJI_TO_ICON[match[0]]);
+    icon.className = 'sh-icon';
+    fragments.push(icon);
+    lastIndex = match.index + match[0].length;
+  }
+  if (!hasMatch) return;
+  if (lastIndex < text.length) {
+    fragments.push(document.createTextNode(text.slice(lastIndex)));
+  }
+  const parent = textNode.parentNode;
+  if (!parent) return;
+  fragments.forEach(function(f) { parent.insertBefore(f, textNode); });
+  parent.removeChild(textNode);
+}
+
+function runEmojiReplacer() {
+  if (!ENABLE_ICON_REPLACER) return;
+  if (_replacing) return;
+  if (!window.lucide || typeof window.lucide.createIcons !== 'function') return;
+  _replacing = true;
+  try {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode: function(node) {
+        if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
+        const p = node.parentNode;
+        if (!p) return NodeFilter.FILTER_REJECT;
+        const tag = p.tagName;
+        if (tag === 'SCRIPT' || tag === 'STYLE') return NodeFilter.FILTER_REJECT;
+        if (p.classList && p.classList.contains('sh-icon')) return NodeFilter.FILTER_REJECT;
+        if (!_emojiRegexSingle.test(node.nodeValue)) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    const nodes = [];
+    let n;
+    while ((n = walker.nextNode())) nodes.push(n);
+    if (!nodes.length) { _replacing = false; return; }
+    nodes.forEach(_replaceEmojiInTextNode);
+    try { window.lucide.createIcons(); } catch (e) { console.warn('lucide failed:', e); }
+  } finally {
+    setTimeout(function() { _replacing = false; }, 150);
+  }
+}
+
+function initEmojiReplacer() {
+  if (window._emojiReplacerReady) return;
+  window._emojiReplacerReady = true;
+  _buildEmojiRegex();
+  setTimeout(runEmojiReplacer, 100);
+  const observer = new MutationObserver(function(mutations) {
+    let hasNew = false;
+    for (let i = 0; i < mutations.length; i++) {
+      if (mutations[i].addedNodes && mutations[i].addedNodes.length) { hasNew = true; break; }
+    }
+    if (!hasNew) return;
+    if (window._emojiDebounce) clearTimeout(window._emojiDebounce);
+    window._emojiDebounce = setTimeout(runEmojiReplacer, 80);
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', function() { setTimeout(initEmojiReplacer, 400); });
+} else {
+  setTimeout(initEmojiReplacer, 400);
+}
+  
+/* === END ICON REPLACER === */
 /* ============================================================
    END PART 45 — APP COMPLETE
    ============================================================ */ 
