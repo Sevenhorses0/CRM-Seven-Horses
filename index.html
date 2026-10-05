@@ -5309,27 +5309,72 @@ function renderPage(page, params) {
     let html = '';
 
     switch (page) {
-      case 'dashboard':
-        html = renderDashboardPage();
-        break;
-      case 'companies':
-        html = renderCompaniesPage(params);
-        break;
-      case 'candidates':
-        html = renderCandidatesPage(params);
-        break;
-      case 'tasks':
-        html = renderTasksPage(params);
-        break;
-      case 'profile':
-        html = renderProfilePage();
-        break;
-      case 'settings':
-        html = renderSettingsPage();
-        break;
-      default:
-        html = renderNotFoundPage(page);
-    }
+  case 'dashboard':
+    html = renderDashboardPage();
+    break;
+  case 'companies':
+    html = renderCompaniesPage(params);
+    break;
+  case 'candidates':
+    html = renderCandidatesPage(params);
+    break;
+  case 'tasks':
+    html = renderTasksPage(params);
+    break;
+  case 'profile':
+    html = renderProfilePage();
+    break;
+  case 'settings':
+    html = renderSettingsPage();
+    break;
+  case 'payments':
+    html = renderPaymentsPage();
+    break;
+  case 'reports':
+    html = renderReportsPage();
+    break;
+  case 'calendar':
+    html = renderCalendarPage();
+    break;
+  case 'employees':
+    html = renderEmployeesPage();
+    break;
+  case 'inquiries':
+    html = renderInquiriesPage();
+    break;
+  case 'collectorHome':
+    html = renderCollectorHomePage();
+    break;
+  case 'collectorSearch':
+    html = renderCollectorSearchPage();
+    break;
+  case 'collectorResults':
+    html = renderCollectorResultsPage();
+    break;
+  case 'agreements':
+    html = renderAgreementsPage();
+    break;
+  case 'activity':
+    html = renderActivityPage();
+    break;
+  case 'auditlog':
+    html = renderAuditLogPage();
+    break;
+  case 'datacontrol':
+    html = renderDataControlPage();
+    break;
+  case 'passwords':
+    html = renderPasswordsPage();
+    break;
+  case 'verification':
+    html = renderVerificationPage();
+    break;
+  case 'chat':
+    html = renderChatPage();
+    break;
+  default:
+    html = renderNotFoundPage(page);
+}
 
     content.innerHTML = html;
 
@@ -7300,8 +7345,16 @@ if (page === 'settings') {
     const current = (typeof SETTINGS_STATE !== 'undefined' && SETTINGS_STATE.activeTab) ? SETTINGS_STATE.activeTab : 'general';
     loadSettingsTab(current);
   }, 100);
-    }
-    }
+}
+
+if (page === 'reports') {
+  setTimeout(function() {
+    loadReportsAndRender();
+  }, 50);
+}
+}
+
+/* === END PART 26 === */
     
 /* === END PART 26 === */
     /* === START PART 27 === */
@@ -17594,6 +17647,1251 @@ async function resetAppConfig() {
 }
 
 /* === END PART 46Q — ALL 17 TABS COMPLETE === */
+/* === START PART 47A-1 (Payments Page) === */
+/* ============================================================
+   PAGE: PAYMENTS
+   ============================================================ */
+const PAYMENTS_PAGE_STATE = {
+  view: 'invoices',
+  filter: 'all',
+  search: '',
+  page: 1,
+  perPage: 50,
+  _debounce: null
+};
+
+function renderPaymentsPage() {
+  const role = STATE.role;
+  if (role !== 'MASTER' && role !== 'ADMIN' && role !== 'CLIENT') {
+    return '<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-title">Access Denied</div></div>';
+  }
+
+  const canCreate = role === 'MASTER' || role === 'ADMIN';
+
+  return `
+    <div>
+      <div class="row between wrap" style="margin-bottom:16px;gap:12px;">
+        <div>
+          <h1 style="font-size:22px;font-weight:600;letter-spacing:-0.015em;margin:0;">Payments</h1>
+          <p class="text-muted" id="paymentsCountLabel" style="font-size:12px;margin-top:2px;">Loading...</p>
+        </div>
+        <div class="row" style="gap:8px;flex-wrap:wrap;">
+          ${canCreate ? '<button class="primary" onclick="openCreateInvoiceModal()">➕ New Invoice</button>' : ''}
+          <button class="ghost" onclick="refreshPaymentsList()">🔄 Refresh</button>
+        </div>
+      </div>
+
+      <div class="stats-grid" style="margin-bottom:20px;">
+        <div class="stat-card">
+          <div class="stat-label">💰 Total Billed</div>
+          <div class="stat-value" id="payStatBilled">₹0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">✅ Received</div>
+          <div class="stat-value success" id="payStatReceived">₹0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">⏳ Pending</div>
+          <div class="stat-value warning" id="payStatPending">₹0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">⚠️ Overdue</div>
+          <div class="stat-value error" id="payStatOverdue">₹0</div>
+        </div>
+      </div>
+
+      <div class="tabs" id="paymentTabs">
+        ${renderPaymentTabs('all')}
+      </div>
+
+      <div class="card flat" style="padding:12px;margin-bottom:14px;">
+        <div class="field" style="margin:0;">
+          <input type="text" id="paymentSearchInput"
+            placeholder="🔍 Search invoice no, company..."
+            oninput="onPaymentSearchInput(this.value)">
+        </div>
+      </div>
+
+      <div id="paymentsContent">
+        <div class="loading-block"><div class="spinner"></div><div>Loading payments...</div></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderPaymentTabs(current) {
+  const tabs = [
+    { id: 'all', label: 'All' },
+    { id: 'draft', label: '📝 Draft' },
+    { id: 'unpaid', label: '⏳ Unpaid' },
+    { id: 'partial', label: '🔶 Partial' },
+    { id: 'paid', label: '✅ Paid' },
+    { id: 'overdue', label: '⚠️ Overdue' }
+  ];
+  let html = '';
+  tabs.forEach(function(t) {
+    html += '<button class="tab ' + (current === t.id ? 'active' : '') + '" onclick="onPaymentTabClick(\'' + t.id + '\')">' + t.label + '</button>';
+  });
+  return html;
+}
+
+function onPaymentTabClick(tabId) {
+  PAYMENTS_PAGE_STATE.filter = tabId;
+  PAYMENTS_PAGE_STATE.page = 1;
+  const tabsEl = $id('paymentTabs');
+  if (tabsEl) tabsEl.innerHTML = renderPaymentTabs(tabId);
+  loadPaymentsAndRender();
+}
+
+function onPaymentSearchInput(v) {
+  PAYMENTS_PAGE_STATE.search = v;
+  PAYMENTS_PAGE_STATE.page = 1;
+  if (PAYMENTS_PAGE_STATE._debounce) clearTimeout(PAYMENTS_PAGE_STATE._debounce);
+  PAYMENTS_PAGE_STATE._debounce = setTimeout(function() { loadPaymentsAndRender(); }, 300);
+}
+
+function refreshPaymentsList() {
+  loadPaymentsAndRender();
+  showToast('info', 'Refreshing...');
+}
+
+function formatMoney(n) {
+  const num = parseInt(n, 10) || 0;
+  return num.toLocaleString('en-IN');
+}
+
+/* === END PART 47A-1 === */
+/* === START PART 47A-2 (Payments Load + Cards) === */
+async function loadPaymentsAndRender() {
+  const container = $id('paymentsContent');
+  if (!container) return;
+
+  container.innerHTML = '<div class="loading-block"><div class="spinner"></div><div>Loading...</div></div>';
+
+  try {
+    let invoices = await fetchInvoices(200);
+    const filtered = applyPaymentFilterLogic(invoices);
+
+    const countLabel = $id('paymentsCountLabel');
+    if (countLabel) countLabel.textContent = filtered.length + ' of ' + invoices.length + ' invoices';
+
+    updatePaymentStats(invoices);
+    renderPaymentsContent(filtered);
+  } catch (e) {
+    console.error('Load payments failed:', e);
+    container.innerHTML = '<div class="empty-state error"><div class="empty-icon">⚠️</div><div class="empty-title">Failed to load</div><div class="empty-message">' + escapeHtml(e.message || 'Try again') + '</div></div>';
+  }
+}
+
+async function fetchInvoices(limit) {
+  try {
+    const snap = await fbDb.collection('invoices')
+      .orderBy('createdAt', 'desc').limit(limit || 200).get();
+    return snap.docs.map(function(d) { return Object.assign({ id: d.id }, d.data()); });
+  } catch (e) {
+    console.warn('Invoices fetch failed:', e);
+    return [];
+  }
+}
+
+function applyPaymentFilterLogic(list) {
+  const state = PAYMENTS_PAGE_STATE;
+  let result = list.slice();
+
+  if (STATE.role === 'CLIENT' && STATE.user && STATE.user.companyId) {
+    result = result.filter(function(i) { return i.companyId === STATE.user.companyId; });
+  }
+
+  const tab = state.filter;
+  const now = Date.now();
+
+  if (tab === 'draft') {
+    result = result.filter(function(i) { return i.status === 'draft'; });
+  } else if (tab === 'unpaid') {
+    result = result.filter(function(i) { return i.status === 'sent' || i.status === 'unpaid'; });
+  } else if (tab === 'partial') {
+    result = result.filter(function(i) { return i.status === 'partial'; });
+  } else if (tab === 'paid') {
+    result = result.filter(function(i) { return i.status === 'paid'; });
+  } else if (tab === 'overdue') {
+    result = result.filter(function(i) {
+      return i.dueDate && i.dueDate < now && i.status !== 'paid';
+    });
+  }
+
+  const q = (state.search || '').toLowerCase().trim();
+  if (q) {
+    result = result.filter(function(i) {
+      const hay = [i.code, i.companyName, i.invoiceNo].filter(Boolean).join(' ').toLowerCase();
+      return hay.indexOf(q) !== -1;
+    });
+  }
+
+  return result.sort(function(a, b) { return (b.createdAt || 0) - (a.createdAt || 0); });
+}
+
+function updatePaymentStats(invoices) {
+  let billed = 0, received = 0, pending = 0, overdue = 0;
+  const now = Date.now();
+
+  invoices.forEach(function(i) {
+    const total = parseInt(i.totalAmount, 10) || 0;
+    const paid = parseInt(i.paidAmount, 10) || 0;
+    billed += total;
+    received += paid;
+
+    if (i.status !== 'paid') {
+      const balance = total - paid;
+      if (i.dueDate && i.dueDate < now) {
+        overdue += balance;
+      } else {
+        pending += balance;
+      }
+    }
+  });
+
+  if ($id('payStatBilled')) $id('payStatBilled').textContent = '₹' + formatMoney(billed);
+  if ($id('payStatReceived')) $id('payStatReceived').textContent = '₹' + formatMoney(received);
+  if ($id('payStatPending')) $id('payStatPending').textContent = '₹' + formatMoney(pending);
+  if ($id('payStatOverdue')) $id('payStatOverdue').textContent = '₹' + formatMoney(overdue);
+}
+
+function renderPaymentsContent(filtered) {
+  const container = $id('paymentsContent');
+  if (!container) return;
+
+  if (!filtered.length) {
+    container.innerHTML = renderPaymentsEmptyState();
+    return;
+  }
+
+  let cards = '';
+  filtered.forEach(function(i) { cards += renderInvoiceCard(i); });
+
+  container.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;">' + cards + '</div>';
+}
+
+function renderPaymentsEmptyState() {
+  const hasFilter = PAYMENTS_PAGE_STATE.filter !== 'all' || PAYMENTS_PAGE_STATE.search;
+  const canCreate = ['MASTER', 'ADMIN'].indexOf(STATE.role) !== -1;
+
+  return '<div class="empty-state"><div class="empty-icon">💰</div><div class="empty-title">' +
+    (hasFilter ? 'No matching invoices' : 'No invoices yet') + '</div><div class="empty-message">' +
+    (hasFilter ? 'Try clearing filters.' : 'Create your first invoice from a deal close.') +
+    '</div>' + (canCreate && !hasFilter ? '<button class="primary" onclick="openCreateInvoiceModal()">➕ New Invoice</button>' : '') + '</div>';
+}
+
+function renderInvoiceCard(inv) {
+  const status = inv.status || 'draft';
+  const statusInfo = getInvoiceStatusInfo(status);
+  const total = parseInt(inv.totalAmount, 10) || 0;
+  const paid = parseInt(inv.paidAmount, 10) || 0;
+  const balance = total - paid;
+  const now = Date.now();
+  const isOverdue = inv.dueDate && inv.dueDate < now && status !== 'paid';
+
+  return `
+    <div class="card clickable" style="padding:14px;" onclick="openInvoiceDrawer('${inv.id}')">
+      <div class="row between" style="gap:8px;margin-bottom:8px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:700;color:var(--gold-dark);">${escapeHtml(inv.code || inv.invoiceNo || 'INV')}</div>
+          <div class="truncate" style="font-size:13px;color:var(--text-primary);margin-top:2px;">${escapeHtml(inv.companyName || 'Unknown')}</div>
+        </div>
+        <span class="badge ${statusInfo.cls}">${escapeHtml(statusInfo.label)}</span>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        ${isOverdue ? '<span class="badge error">⚠️ Overdue</span>' : ''}
+        ${inv.gstType ? '<span class="badge navy">GST</span>' : ''}
+      </div>
+
+      <div style="background:var(--bg-subtle);border-radius:var(--radius);padding:10px;">
+        <div class="row between" style="font-size:12px;margin-bottom:4px;">
+          <span class="text-muted">Total</span>
+          <span style="font-weight:700;">₹${formatMoney(total)}</span>
+        </div>
+        <div class="row between" style="font-size:12px;margin-bottom:4px;">
+          <span class="text-muted">Paid</span>
+          <span style="color:var(--success);font-weight:600;">₹${formatMoney(paid)}</span>
+        </div>
+        ${balance > 0 ? `
+          <div class="row between" style="font-size:12px;padding-top:6px;border-top:1px solid var(--border-light);">
+            <span class="text-muted">Balance</span>
+            <span style="color:${isOverdue ? 'var(--error)' : 'var(--warning)'};font-weight:700;">₹${formatMoney(balance)}</span>
+          </div>
+        ` : ''}
+      </div>
+
+      <div class="text-muted" style="font-size:10px;margin-top:8px;">
+        ${inv.dueDate ? '📅 Due ' + formatDate(inv.dueDate) : '📅 No due date'}
+      </div>
+    </div>
+  `;
+}
+
+function getInvoiceStatusInfo(status) {
+  const map = {
+    draft: { label: '📝 Draft', cls: '' },
+    sent: { label: '📤 Sent', cls: 'info' },
+    unpaid: { label: '⏳ Unpaid', cls: 'warning' },
+    partial: { label: '🔶 Partial', cls: 'gold' },
+    paid: { label: '✅ Paid', cls: 'success' },
+    hold: { label: '⏸ Hold', cls: 'warning' },
+    cancelled: { label: '❌ Cancelled', cls: 'error' }
+  };
+  return map[status] || { label: status, cls: '' };
+}
+
+/* === END PART 47A-2 === */ 
+      /* === START PART 47B (Create Invoice Modal) === */
+function openCreateInvoiceModal(companyId) {
+  const isMaster = STATE.role === 'MASTER' || STATE.role === 'ADMIN';
+  if (!isMaster) { showToast('error', 'Access denied'); return; }
+
+  const companies = STATE.cache.companies || [];
+
+  let companyOpts = '<option value="">— Select Company —</option>';
+  companies.forEach(function(c) {
+    if (c.isDeleted) return;
+    companyOpts += '<option value="' + c.id + '" data-name="' + escapeAttr(c.name || '') + '" data-loc="' + escapeAttr(c.location || '') + '" data-gstin="' + escapeAttr(c.gstin || '') + '">' +
+      escapeHtml(c.name || 'Unnamed') + (c.location ? ' · ' + escapeHtml(c.location) : '') + '</option>';
+  });
+
+  const html = `
+    <div class="form-section">
+      <div class="form-section-title">🏢 Client</div>
+      <div class="field">
+        <label>Company <span class="required">*</span></label>
+        <select id="invCompany" onchange="onInvoiceCompanyChange()">${companyOpts}</select>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Client GSTIN</label>
+          <input type="text" id="invGstin" placeholder="27XXXXX1234X1Z5">
+        </div>
+        <div class="field">
+          <label>Client State</label>
+          <input type="text" id="invState" placeholder="e.g. Maharashtra">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Our State (Company)</label>
+          <input type="text" id="invOurState" value="Delhi" oninput="detectInvoiceGstType();recalcInvoice();">
+        </div>
+        <div class="field">
+          <label>GST Type</label>
+          <input type="text" id="invGstType" value="Auto" readonly>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">📋 Line Items</div>
+      <div id="invLineItems"></div>
+      <button type="button" class="ghost sm" onclick="addInvoiceLineItem()">➕ Add Item</button>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">💰 Summary</div>
+      <div class="info-row">
+        <span class="info-label">Subtotal</span>
+        <span class="info-value" id="invSubtotal">₹0</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label" id="invGstLabel">GST (18%)</span>
+        <span class="info-value" id="invGstAmount">₹0</span>
+      </div>
+      <div class="info-row" style="font-weight:700;border-top:2px solid var(--border);margin-top:6px;padding-top:10px;">
+        <span class="info-label" style="color:var(--text-primary);">Total</span>
+        <span class="info-value" id="invTotal" style="color:var(--gold-dark);font-size:16px;">₹0</span>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <div class="form-section-title">📅 Dates & Notes</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Invoice Date</label>
+          <input type="date" id="invDate" value="${new Date().toISOString().slice(0, 10)}">
+        </div>
+        <div class="field">
+          <label>Due Date</label>
+          <input type="date" id="invDueDate">
+        </div>
+      </div>
+      <div class="field">
+        <label>Notes</label>
+        <textarea rows="2" id="invNotes" placeholder="Payment terms, bank details..."></textarea>
+      </div>
+    </div>
+
+    <div id="invMessage" class="auth-message"></div>
+  `;
+
+  const footer = `
+    <button class="ghost" onclick="closeAllModals()">Cancel</button>
+    <button class="primary" id="invSaveBtn" onclick="saveNewInvoice()">💾 Create Invoice</button>
+  `;
+
+  openModal(html, { title: '➕ New Invoice', size: 'lg', footerHtml: footer });
+
+  setTimeout(function() {
+    addInvoiceLineItem();
+    if (companyId) {
+      const sel = $id('invCompany');
+      if (sel) { sel.value = companyId; onInvoiceCompanyChange(); }
+    }
+  }, 100);
+}
+
+function addInvoiceLineItem() {
+  const container = $id('invLineItems');
+  if (!container) return;
+
+  const row = document.createElement('div');
+  row.className = 'inv-line-item';
+  row.style.cssText = 'display:grid;grid-template-columns:2fr 55px 85px 85px 32px;gap:6px;margin-bottom:8px;align-items:end;';
+  row.innerHTML = `
+    <div class="field" style="margin:0;">
+      <input type="text" class="inv-item-desc" placeholder="Description" value="Manpower placement service">
+    </div>
+    <div class="field" style="margin:0;">
+      <input type="number" class="inv-item-qty" value="1" min="1" oninput="recalcInvoice()">
+    </div>
+    <div class="field" style="margin:0;">
+      <input type="number" class="inv-item-rate" placeholder="Rate" oninput="recalcInvoice()">
+    </div>
+    <div class="field" style="margin:0;">
+      <input type="number" class="inv-item-amt" placeholder="Amt" readonly style="background:var(--bg-subtle);">
+    </div>
+    <button type="button" class="icon-btn danger" onclick="this.parentNode.remove();recalcInvoice()" style="width:32px;height:32px;">✕</button>
+  `;
+  container.appendChild(row);
+  recalcInvoice();
+}
+
+function onInvoiceCompanyChange() {
+  const sel = $id('invCompany');
+  if (!sel || !sel.value) return;
+  const opt = sel.selectedOptions[0];
+  if (!opt) return;
+
+  const gstin = opt.getAttribute('data-gstin') || '';
+  const loc = opt.getAttribute('data-loc') || '';
+
+  if ($id('invGstin')) $id('invGstin').value = gstin;
+  if ($id('invState')) $id('invState').value = loc;
+
+  detectInvoiceGstType();
+  recalcInvoice();
+}
+
+function detectInvoiceGstType() {
+  const ourState = (($id('invOurState') || {}).value || '').toLowerCase().trim();
+  const clientState = (($id('invState') || {}).value || '').toLowerCase().trim();
+
+  let type = 'Auto';
+  if (ourState && clientState) {
+    if (ourState === clientState) type = 'CGST + SGST (9% + 9%)';
+    else type = 'IGST (18%)';
+  }
+  if ($id('invGstType')) $id('invGstType').value = type;
+}
+
+function recalcInvoice() {
+  const items = document.querySelectorAll('.inv-line-item');
+  let subtotal = 0;
+
+  items.forEach(function(row) {
+    const qty = parseInt(row.querySelector('.inv-item-qty').value, 10) || 0;
+    const rate = parseFloat(row.querySelector('.inv-item-rate').value) || 0;
+    const amt = qty * rate;
+    row.querySelector('.inv-item-amt').value = amt.toFixed(2);
+    subtotal += amt;
+  });
+
+  const gst = Math.round(subtotal * 0.18);
+  const total = subtotal + gst;
+
+  detectInvoiceGstType();
+  const gstType = ($id('invGstType') || {}).value || '';
+  const gstLabel = gstType.indexOf('IGST') !== -1 ? 'IGST (18%)' : 'GST (18%)';
+
+  if ($id('invSubtotal')) $id('invSubtotal').textContent = '₹' + formatMoney(subtotal);
+  if ($id('invGstLabel')) $id('invGstLabel').textContent = gstLabel;
+  if ($id('invGstAmount')) $id('invGstAmount').textContent = '₹' + formatMoney(gst);
+  if ($id('invTotal')) $id('invTotal').textContent = '₹' + formatMoney(total);
+}
+
+async function saveNewInvoice() {
+  hideAuthMessage('invMessage');
+
+  const companyEl = $id('invCompany');
+  const gstinEl = $id('invGstin');
+  const stateEl = $id('invState');
+  const dateEl = $id('invDate');
+  const dueEl = $id('invDueDate');
+  const notesEl = $id('invNotes');
+  const btn = $id('invSaveBtn');
+
+  const companyId = companyEl ? companyEl.value : '';
+  if (!companyId) {
+    showAuthMessage('invMessage', 'Select a company', 'error');
+    return;
+  }
+
+  /* Gather line items */
+  const items = [];
+  document.querySelectorAll('.inv-line-item').forEach(function(row) {
+    const desc = row.querySelector('.inv-item-desc').value.trim();
+    const qty = parseInt(row.querySelector('.inv-item-qty').value, 10) || 0;
+    const rate = parseFloat(row.querySelector('.inv-item-rate').value) || 0;
+    if (desc && qty > 0 && rate > 0) {
+      items.push({ description: desc, qty: qty, rate: rate, amount: qty * rate });
+    }
+  });
+
+  if (!items.length) {
+    showAuthMessage('invMessage', 'Add at least 1 line item', 'error');
+    return;
+  }
+
+  const subtotal = items.reduce(function(sum, it) { return sum + it.amount; }, 0);
+  const gstAmount = Math.round(subtotal * 0.18);
+  const totalAmount = subtotal + gstAmount;
+
+  const c = (STATE.cache.companies || []).find(function(x) { return x.id === companyId; });
+  const companyName = c ? c.name : (companyEl.selectedOptions[0] ? companyEl.selectedOptions[0].textContent : '');
+
+  const gstType = ($id('invGstType') || {}).value || '';
+  let gstSplit = {};
+  if (gstType.indexOf('IGST') !== -1) {
+    gstSplit = { igst: gstAmount };
+  } else if (gstType.indexOf('CGST') !== -1) {
+    gstSplit = { cgst: Math.round(gstAmount / 2), sgst: Math.round(gstAmount / 2) };
+  } else {
+    gstSplit = { gst: gstAmount };
+  }
+
+  if (!fbReady || !fbDb) {
+    showAuthMessage('invMessage', 'Connection error', 'error');
+    return;
+  }
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating...'; }
+
+  try {
+    const now = Date.now();
+    const code = await generateInvoiceCode(getCompanyShortCode(companyName));
+
+    let dueTs = null;
+    if (dueEl && dueEl.value) {
+      dueTs = new Date(dueEl.value).setHours(23, 59, 59, 999);
+    }
+
+    const invoiceDate = dateEl && dateEl.value ? new Date(dateEl.value).getTime() : now;
+
+    const docData = {
+      code: code,
+      invoiceNo: code,
+      companyId: companyId,
+      companyName: companyName,
+      clientGstin: gstinEl ? gstinEl.value.trim() : '',
+      clientState: stateEl ? stateEl.value.trim() : '',
+      ourState: ($id('invOurState') || {}).value || '',
+      gstType: gstType,
+      items: items,
+      subtotal: subtotal,
+      gstAmount: gstAmount,
+      gstSplit: gstSplit,
+      totalAmount: totalAmount,
+      paidAmount: 0,
+      balanceAmount: totalAmount,
+      status: 'draft',
+      invoiceDate: invoiceDate,
+      dueDate: dueTs,
+      notes: notesEl ? notesEl.value.trim() : '',
+      payments: [],
+      createdBy: STATE.user.uid,
+      createdByName: STATE.user.name,
+      _v: 1,
+      createdAt: now,
+      updatedAt: now
+    };
+
+    const ref = await fbDb.collection('invoices').add(docData);
+
+    logAuditEvent('invoice_create', 'invoice', code, '₹' + totalAmount);
+    showToast('success', 'Invoice ' + code + ' created');
+    closeAllModals();
+    loadPaymentsAndRender();
+  } catch (e) {
+    console.error('Save invoice failed:', e);
+    showAuthMessage('invMessage', '❌ ' + (e.message || 'Failed to save'), 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Create Invoice'; }
+  }
+}
+
+/* === END PART 47B === */
+    /* === START PART 47C (Invoice Drawer + Payment) === */
+async function openInvoiceDrawer(invoiceId) {
+  const inv = await fetchDoc('invoices', invoiceId);
+  if (!inv) { showToast('error', 'Invoice not found'); return; }
+
+  const statusInfo = getInvoiceStatusInfo(inv.status || 'draft');
+  const total = parseInt(inv.totalAmount, 10) || 0;
+  const paid = parseInt(inv.paidAmount, 10) || 0;
+  const balance = total - paid;
+  const now = Date.now();
+  const isOverdue = inv.dueDate && inv.dueDate < now && inv.status !== 'paid';
+
+  let itemsHtml = '';
+  (inv.items || []).forEach(function(it, i) {
+    itemsHtml += '<div style="display:grid;grid-template-columns:2fr 40px 80px 80px;gap:6px;padding:8px 0;border-bottom:1px solid var(--border-light);font-size:12px;">' +
+      '<span>' + escapeHtml(it.description || '') + '</span>' +
+      '<span class="text-muted">' + (it.qty || 0) + '</span>' +
+      '<span class="text-muted">₹' + formatMoney(it.rate) + '</span>' +
+      '<span style="text-align:right;font-weight:600;">₹' + formatMoney(it.amount) + '</span>' +
+      '</div>';
+  });
+
+  let paymentsHtml = '';
+  if (inv.payments && inv.payments.length) {
+    paymentsHtml = '<div class="card-title" style="margin:14px 0 10px;">💳 Payment History (' + inv.payments.length + ')</div>';
+    inv.payments.forEach(function(p) {
+      paymentsHtml += '<div style="padding:10px;background:var(--bg-subtle);border-radius:var(--radius);margin-bottom:8px;">' +
+        '<div class="row between" style="margin-bottom:4px;">' +
+          '<span style="font-size:12px;font-weight:700;color:var(--success);">₹' + formatMoney(p.amount) + '</span>' +
+          '<span class="text-muted" style="font-size:10px;">' + formatDate(p.paidAt) + '</span>' +
+        '</div>' +
+        '<div class="text-muted" style="font-size:11px;">' +
+          (p.method ? '💳 ' + escapeHtml(p.method) : '') +
+          (p.reference ? ' · ' + escapeHtml(p.reference) : '') +
+        '</div>' +
+        (p.notes ? '<div class="text-muted" style="font-size:11px;margin-top:4px;font-style:italic;">"' + escapeHtml(p.notes) + '"</div>' : '') +
+        '</div>';
+    });
+  }
+
+  const isMaster = STATE.role === 'MASTER' || STATE.role === 'ADMIN';
+  const canPay = isMaster && inv.status !== 'paid';
+
+  const html = `
+    <div class="row between" style="margin-bottom:14px;">
+      <div>
+        <div style="font-size:18px;font-weight:700;color:var(--gold-dark);">${escapeHtml(inv.code || 'INV')}</div>
+        <div class="text-muted" style="font-size:12px;margin-top:2px;">${escapeHtml(inv.companyName || '')}</div>
+      </div>
+      <span class="badge ${statusInfo.cls}" style="font-size:12px;padding:6px 14px;">${escapeHtml(statusInfo.label)}</span>
+    </div>
+
+    ${isOverdue ? '<div class="card" style="border-color:var(--error-border);background:var(--error-bg);padding:10px;margin-bottom:14px;font-size:12px;color:var(--error);font-weight:600;">⚠️ Overdue since ' + formatDate(inv.dueDate) + '</div>' : ''}
+
+    <div class="card" style="margin-bottom:14px;">
+      <div class="card-title" style="margin-bottom:10px;">📋 Line Items</div>
+      ${itemsHtml || '<div class="text-muted" style="font-size:12px;">No items</div>'}
+    </div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <div class="card-title" style="margin-bottom:10px;">💰 Amounts</div>
+      <div class="info-row">
+        <span class="info-label">Subtotal</span>
+        <span class="info-value">₹${formatMoney(inv.subtotal)}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">${inv.gstType && inv.gstType.indexOf('IGST') !== -1 ? 'IGST' : (inv.gstType && inv.gstType.indexOf('CGST') !== -1 ? 'CGST + SGST' : 'GST')}</span>
+        <span class="info-value">₹${formatMoney(inv.gstAmount)}</span>
+      </div>
+      <div class="info-row" style="font-weight:700;border-top:1px solid var(--border);padding-top:8px;">
+        <span class="info-label" style="color:var(--text-primary);">Total</span>
+        <span class="info-value" style="color:var(--gold-dark);">₹${formatMoney(total)}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Paid</span>
+        <span class="info-value" style="color:var(--success);">₹${formatMoney(paid)}</span>
+      </div>
+      ${balance > 0 ? '<div class="info-row" style="font-weight:700;"><span class="info-label" style="color:var(--error);">Balance</span><span class="info-value" style="color:var(--error);">₹' + formatMoney(balance) + '</span></div>' : ''}
+    </div>
+
+    <div class="card" style="margin-bottom:14px;">
+      <div class="card-title" style="margin-bottom:10px;">📅 Details</div>
+      <div class="info-row"><span class="info-label">Invoice Date</span><span class="info-value">${formatDate(inv.invoiceDate)}</span></div>
+      <div class="info-row"><span class="info-label">Due Date</span><span class="info-value">${inv.dueDate ? formatDate(inv.dueDate) : '—'}</span></div>
+      ${inv.clientGstin ? '<div class="info-row"><span class="info-label">Client GSTIN</span><span class="info-value">' + escapeHtml(inv.clientGstin) + '</span></div>' : ''}
+      ${inv.notes ? '<div class="info-row"><span class="info-label">Notes</span><span class="info-value">' + escapeHtml(inv.notes) + '</span></div>' : ''}
+    </div>
+
+    ${paymentsHtml}
+
+    ${isMaster ? `
+      <div class="row" style="gap:6px;flex-wrap:wrap;margin-top:14px;">
+        ${canPay ? '<button class="success sm" style="flex:1;" onclick="openRecordPaymentModal(\'' + inv.id + '\')">💳 Record Payment</button>' : ''}
+        <button class="ghost sm" onclick="downloadInvoicePDF('${inv.id}')">📄 PDF</button>
+      </div>
+    ` : ''}
+  `;
+
+  openDrawer(html, { title: 'Invoice', size: 'lg' });
+}
+
+/* ============================================================
+   RECORD PAYMENT MODAL
+   ============================================================ */
+async function openRecordPaymentModal(invoiceId) {
+  if (STATE.role !== 'MASTER' && STATE.role !== 'ADMIN') {
+    showToast('error', 'Access denied');
+    return;
+  }
+
+  const inv = await fetchDoc('invoices', invoiceId);
+  if (!inv) { showToast('error', 'Invoice not found'); return; }
+
+  const total = parseInt(inv.totalAmount, 10) || 0;
+  const paid = parseInt(inv.paidAmount, 10) || 0;
+  const balance = total - paid;
+
+  const html = `
+    <div class="card" style="background:var(--bg-subtle);padding:14px;margin-bottom:14px;">
+      <div class="info-row">
+        <span class="info-label">Invoice</span>
+        <span class="info-value">${escapeHtml(inv.code || '')}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Company</span>
+        <span class="info-value">${escapeHtml(inv.companyName || '')}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Total</span>
+        <span class="info-value">₹${formatMoney(total)}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Already Paid</span>
+        <span class="info-value" style="color:var(--success);">₹${formatMoney(paid)}</span>
+      </div>
+      <div class="info-row" style="font-weight:700;">
+        <span class="info-label" style="color:var(--warning);">Balance</span>
+        <span class="info-value" style="color:var(--warning);">₹${formatMoney(balance)}</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Amount (₹) <span class="required">*</span></label>
+      <input type="number" id="payAmount" value="${balance}" max="${balance}" min="1">
+      <span class="helper">Max: ₹${formatMoney(balance)}</span>
+    </div>
+
+    <div class="field">
+      <label>Payment Method</label>
+      <select id="payMethod">
+        <option value="bank_transfer">Bank Transfer</option>
+        <option value="cash">Cash</option>
+        <option value="cheque">Cheque</option>
+        <option value="upi">UPI</option>
+        <option value="card">Card</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Reference No.</label>
+      <input type="text" id="payReference" placeholder="Transaction ID / Cheque no.">
+    </div>
+
+    <div class="field">
+      <label>Payment Date</label>
+      <input type="date" id="payDate" value="${new Date().toISOString().slice(0, 10)}">
+    </div>
+
+    <div class="field">
+      <label>Notes</label>
+      <textarea rows="2" id="payNotes" placeholder="Any notes..."></textarea>
+    </div>
+
+    <div id="payMessage" class="auth-message"></div>
+  `;
+
+  const footer = `
+    <button class="ghost" onclick="closeAllModals()">Cancel</button>
+    <button class="primary" id="paySaveBtn" onclick="savePaymentRecord('${invoiceId}')">💳 Record Payment</button>
+  `;
+
+  openModal(html, { title: '💳 Record Payment', size: 'sm', footerHtml: footer });
+}
+
+async function savePaymentRecord(invoiceId) {
+  hideAuthMessage('payMessage');
+
+  const amtEl = $id('payAmount');
+  const methodEl = $id('payMethod');
+  const refEl = $id('payReference');
+  const dateEl = $id('payDate');
+  const notesEl = $id('payNotes');
+  const btn = $id('paySaveBtn');
+
+  const amount = parseInt(amtEl ? amtEl.value : '0', 10) || 0;
+  if (amount < 1) {
+    showAuthMessage('payMessage', 'Enter valid amount', 'error');
+    return;
+  }
+
+  try {
+    const inv = await fetchDoc('invoices', invoiceId);
+    if (!inv) throw new Error('Invoice not found');
+
+    const total = parseInt(inv.totalAmount, 10) || 0;
+    const currentPaid = parseInt(inv.paidAmount, 10) || 0;
+    const balance = total - currentPaid;
+
+    if (amount > balance) {
+      showAuthMessage('payMessage', 'Amount exceeds balance (₹' + formatMoney(balance) + ')', 'error');
+      return;
+    }
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Saving...'; }
+
+    const now = Date.now();
+    const paidAt = dateEl && dateEl.value ? new Date(dateEl.value).getTime() : now;
+
+    const payment = {
+      id: 'pay_' + now,
+      amount: amount,
+      method: methodEl ? methodEl.value : 'other',
+      reference: refEl ? refEl.value.trim() : '',
+      notes: notesEl ? notesEl.value.trim() : '',
+      paidAt: paidAt,
+      recordedBy: STATE.user.uid,
+      recordedByName: STATE.user.name,
+      recordedAt: now
+    };
+
+    const newPaid = currentPaid + amount;
+    const newBalance = total - newPaid;
+    let newStatus = 'partial';
+    if (newBalance <= 0) newStatus = 'paid';
+    else if (newPaid === 0) newStatus = inv.status || 'draft';
+
+    const payments = inv.payments || [];
+    payments.push(payment);
+
+    await fbDb.collection('invoices').doc(invoiceId).update({
+      paidAmount: newPaid,
+      balanceAmount: newBalance,
+      status: newStatus,
+      payments: payments,
+      lastPaymentAt: paidAt,
+      updatedAt: now
+    });
+
+    logAuditEvent('payment_record', 'invoice', inv.code, '₹' + amount + ' (' + payment.method + ')');
+    showToast('success', '₹' + formatMoney(amount) + ' recorded');
+
+    closeAllModals();
+    closeAllDrawers();
+
+    if (STATE.currentPage === 'payments') {
+      loadPaymentsAndRender();
+    }
+
+    setTimeout(function() { openInvoiceDrawer(invoiceId); }, 300);
+  } catch (e) {
+    console.error('Save payment failed:', e);
+    showAuthMessage('payMessage', '❌ ' + (e.message || 'Failed'), 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '💳 Record Payment'; }
+  }
+}
+
+/* ============================================================
+   INVOICE PDF DOWNLOAD (basic version)
+   ============================================================ */
+async function downloadInvoicePDF(invoiceId) {
+  const inv = await fetchDoc('invoices', invoiceId);
+  if (!inv) { showToast('error', 'Invoice not found'); return; }
+
+  if (typeof window.jspdf === 'undefined') {
+    showToast('warning', 'PDF library not loaded');
+    return;
+  }
+
+  try {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+
+    /* Header */
+    doc.setFillColor(15, 27, 45);
+    doc.rect(0, 0, 210, 30, 'F');
+    doc.setTextColor(201, 169, 97);
+    doc.setFontSize(22);
+    doc.setFont('helvetica', 'bold');
+    doc.text('SEVEN HORSES', 15, 15);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Manpower Solutions', 15, 22);
+
+    /* Invoice info */
+    doc.setTextColor(15, 27, 45);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('INVOICE', 170, 15, { align: 'right' });
+
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    doc.text('No: ' + (inv.code || ''), 170, 22, { align: 'right' });
+
+    /* Client + dates */
+    let y = 45;
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Bill To:', 15, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text(inv.companyName || '', 15, y + 5);
+    if (inv.clientState) doc.text(inv.clientState, 15, y + 10);
+    if (inv.clientGstin) doc.text('GSTIN: ' + inv.clientGstin, 15, y + 15);
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Invoice Date:', 150, y);
+    doc.setFont('helvetica', 'normal');
+    doc.text(formatDate(inv.invoiceDate), 150, y + 5);
+    if (inv.dueDate) {
+      doc.setFont('helvetica', 'bold');
+      doc.text('Due Date:', 150, y + 10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(formatDate(inv.dueDate), 150, y + 15);
+    }
+
+    /* Table header */
+    y = 75;
+    doc.setFillColor(247, 245, 240);
+    doc.rect(15, y - 5, 180, 8, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('Description', 17, y);
+    doc.text('Qty', 130, y);
+    doc.text('Rate', 150, y);
+    doc.text('Amount', 180, y, { align: 'right' });
+
+    /* Table rows */
+    doc.setFont('helvetica', 'normal');
+    y += 8;
+    (inv.items || []).forEach(function(it) {
+      doc.text(String(it.description || ''), 17, y);
+      doc.text(String(it.qty || 0), 130, y);
+      doc.text('₹' + formatMoney(it.rate), 150, y);
+      doc.text('₹' + formatMoney(it.amount), 192, y, { align: 'right' });
+      y += 6;
+    });
+
+    /* Totals */
+    y += 5;
+    doc.setDrawColor(201, 169, 97);
+    doc.line(120, y, 195, y);
+    y += 6;
+    doc.text('Subtotal:', 150, y);
+    doc.text('₹' + formatMoney(inv.subtotal), 192, y, { align: 'right' });
+    y += 6;
+    const gstLabel = inv.gstType && inv.gstType.indexOf('IGST') !== -1 ? 'IGST (18%):' : 'GST (18%):';
+    doc.text(gstLabel, 150, y);
+    doc.text('₹' + formatMoney(inv.gstAmount), 192, y, { align: 'right' });
+    y += 6;
+    doc.setFont('helvetica', 'bold');
+    doc.text('Total:', 150, y);
+    doc.text('₹' + formatMoney(inv.totalAmount), 192, y, { align: 'right' });
+
+    if (inv.paidAmount > 0) {
+      y += 6;
+      doc.setFont('helvetica', 'normal');
+      doc.text('Paid:', 150, y);
+      doc.text('₹' + formatMoney(inv.paidAmount), 192, y, { align: 'right' });
+      y += 6;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Balance:', 150, y);
+      doc.text('₹' + formatMoney((inv.totalAmount || 0) - (inv.paidAmount || 0)), 192, y, { align: 'right' });
+    }
+
+    /* Footer */
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(139, 150, 168);
+    doc.text('Thank you for your business!', 105, 280, { align: 'center' });
+
+    doc.save((inv.code || 'invoice') + '.pdf');
+    showToast('success', 'PDF downloaded');
+  } catch (e) {
+    console.error('PDF generation failed:', e);
+    showToast('error', 'PDF failed: ' + (e.message || 'unknown'));
+  }
+}
+
+/* === END PART 47C === */
+/* === START PART 48 (Reports Page) === */
+/* ============================================================
+   PAGE: REPORTS
+   ============================================================ */
+const REPORTS_STATE = {
+  range: '30d',
+  loading: false
+};
+
+function renderReportsPage() {
+  const role = STATE.role;
+  if (role !== 'MASTER' && role !== 'ADMIN') {
+    return '<div class="empty-state"><div class="empty-icon">🔒</div><div class="empty-title">Access Denied</div><div class="empty-message">Only MASTER / ADMIN can view reports</div></div>';
+  }
+
+  return `
+    <div>
+      <div class="row between wrap" style="margin-bottom:16px;gap:12px;">
+        <div>
+          <h1 style="font-size:22px;font-weight:600;letter-spacing:-0.015em;margin:0;">Reports</h1>
+          <p class="text-muted" style="font-size:12px;margin-top:2px;">Analytics & performance</p>
+        </div>
+        <div class="row" style="gap:6px;flex-wrap:wrap;">
+          <button class="chip clickable ${REPORTS_STATE.range === '7d' ? 'active' : ''}" onclick="setReportRange('7d')">7 Days</button>
+          <button class="chip clickable ${REPORTS_STATE.range === '30d' ? 'active' : ''}" onclick="setReportRange('30d')">30 Days</button>
+          <button class="chip clickable ${REPORTS_STATE.range === '90d' ? 'active' : ''}" onclick="setReportRange('90d')">90 Days</button>
+          <button class="chip clickable ${REPORTS_STATE.range === 'all' ? 'active' : ''}" onclick="setReportRange('all')">All Time</button>
+        </div>
+      </div>
+
+      <div id="reportsContent">
+        <div class="loading-block"><div class="spinner"></div><div>Loading reports...</div></div>
+      </div>
+    </div>
+  `;
+}
+
+function setReportRange(range) {
+  REPORTS_STATE.range = range;
+  navigateTo('reports');
+}
+
+async function loadReportsAndRender() {
+  const container = $id('reportsContent');
+  if (!container) return;
+
+  container.innerHTML = '<div class="loading-block"><div class="spinner"></div><div>Loading...</div></div>';
+
+  try {
+    const cutoff = getReportCutoff(REPORTS_STATE.range);
+
+    const [companies, candidates, invoices] = await Promise.all([
+      fetchCompanies(500).catch(function() { return []; }),
+      fetchCandidates(500).catch(function() { return []; }),
+      fetchInvoices(500).catch(function() { return []; })
+    ]);
+
+    const fc = companies.filter(function(c) { return !cutoff || (c.createdAt || 0) >= cutoff; });
+    const fcan = candidates.filter(function(c) { return !cutoff || (c.createdAt || 0) >= cutoff; });
+    const finv = invoices.filter(function(i) { return !cutoff || (i.createdAt || 0) >= cutoff; });
+
+    container.innerHTML = renderReportsContent(fc, fcan, finv);
+  } catch (e) {
+    console.error('Reports load failed:', e);
+    container.innerHTML = '<div class="empty-state error"><div class="empty-icon">⚠️</div><div>Failed to load</div></div>';
+  }
+}
+
+function getReportCutoff(range) {
+  if (range === 'all') return 0;
+  const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
+  return Date.now() - days * 24 * 60 * 60 * 1000;
+}
+
+function renderReportsContent(companies, candidates, invoices) {
+  /* Company stage breakdown */
+  const stageCount = {};
+  companies.forEach(function(c) {
+    const s = c.stage || 'new_lead';
+    stageCount[s] = (stageCount[s] || 0) + 1;
+  });
+
+  /* Candidate stage breakdown */
+  const candStageCount = {};
+  candidates.forEach(function(c) {
+    const s = c.stage || 'active';
+    candStageCount[s] = (candStageCount[s] || 0) + 1;
+  });
+
+  /* Payment totals */
+  let billed = 0, paid = 0, pending = 0;
+  invoices.forEach(function(i) {
+    const t = parseInt(i.totalAmount, 10) || 0;
+    const p = parseInt(i.paidAmount, 10) || 0;
+    billed += t;
+    paid += p;
+    if (i.status !== 'paid') pending += (t - p);
+  });
+
+  /* Placement rate */
+  const placed = candidates.filter(function(c) { return c.stage === 'placed'; }).length;
+  const placementRate = candidates.length ? Math.round((placed / candidates.length) * 100) : 0;
+
+  /* Top performers — company count per employee */
+  const empCompanies = {};
+  companies.forEach(function(c) {
+    if (!c.assignedToName) return;
+    empCompanies[c.assignedToName] = (empCompanies[c.assignedToName] || 0) + 1;
+  });
+  const topEmp = Object.keys(empCompanies).map(function(k) {
+    return { name: k, count: empCompanies[k] };
+  }).sort(function(a, b) { return b.count - a.count; }).slice(0, 5);
+
+  let topEmpHtml = '';
+  if (topEmp.length) {
+    topEmp.forEach(function(e, i) {
+      topEmpHtml += '<div class="info-row">' +
+        '<span class="info-label">' + (i + 1) + '. ' + escapeHtml(e.name) + '</span>' +
+        '<span class="info-value">' + e.count + ' companies</span>' +
+        '</div>';
+    });
+  } else {
+    topEmpHtml = '<div class="text-muted" style="font-size:12px;text-align:center;padding:10px;">No data</div>';
+  }
+
+  /* Company stages html */
+  let companyStageHtml = '';
+  const sortedCompanyStages = Object.keys(stageCount).sort(function(a, b) { return stageCount[b] - stageCount[a]; });
+  sortedCompanyStages.forEach(function(s) {
+    const info = getCompanyStageInfo(s);
+    const pct = companies.length ? Math.round((stageCount[s] / companies.length) * 100) : 0;
+    companyStageHtml += '<div style="margin-bottom:10px;">' +
+      '<div class="row between" style="margin-bottom:4px;font-size:12px;">' +
+        '<span>' + escapeHtml(info.label) + '</span>' +
+        '<span style="font-weight:600;">' + stageCount[s] + ' (' + pct + '%)</span>' +
+      '</div>' +
+      '<div class="progress thin"><div class="progress-bar" style="width:' + pct + '%;"></div></div>' +
+      '</div>';
+  });
+  if (!companyStageHtml) companyStageHtml = '<div class="text-muted" style="font-size:12px;text-align:center;padding:10px;">No companies</div>';
+
+  /* Candidate stages html */
+  let candStageHtml = '';
+  const sortedCandStages = Object.keys(candStageCount).sort(function(a, b) { return candStageCount[b] - candStageCount[a]; });
+  sortedCandStages.forEach(function(s) {
+    const info = getCandidateStageInfo(s);
+    const pct = candidates.length ? Math.round((candStageCount[s] / candidates.length) * 100) : 0;
+    candStageHtml += '<div style="margin-bottom:10px;">' +
+      '<div class="row between" style="margin-bottom:4px;font-size:12px;">' +
+        '<span>' + escapeHtml(info.label) + '</span>' +
+        '<span style="font-weight:600;">' + candStageCount[s] + ' (' + pct + '%)</span>' +
+      '</div>' +
+      '<div class="progress thin"><div class="progress-bar success" style="width:' + pct + '%;"></div></div>' +
+      '</div>';
+  });
+  if (!candStageHtml) candStageHtml = '<div class="text-muted" style="font-size:12px;text-align:center;padding:10px;">No candidates</div>';
+
+  return `
+    <div class="stats-grid" style="margin-bottom:20px;">
+      <div class="stat-card">
+        <div class="stat-label">🏢 Companies</div>
+        <div class="stat-value">${companies.length}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">👥 Candidates</div>
+        <div class="stat-value">${candidates.length}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">✅ Placed</div>
+        <div class="stat-value success">${placed}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">📈 Placement Rate</div>
+        <div class="stat-value gold">${placementRate}%</div>
+      </div>
+    </div>
+
+    <div class="card flat" style="margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:12px;">💰 Financial Summary</div>
+      <div class="info-row">
+        <span class="info-label">Total Billed</span>
+        <span class="info-value" style="font-weight:700;">₹${formatMoney(billed)}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Received</span>
+        <span class="info-value" style="color:var(--success);">₹${formatMoney(paid)}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Pending</span>
+        <span class="info-value" style="color:var(--warning);">₹${formatMoney(pending)}</span>
+      </div>
+      <div class="info-row" style="font-weight:700;border-top:1px solid var(--border);padding-top:8px;">
+        <span class="info-label">Collection Rate</span>
+        <span class="info-value">${billed ? Math.round((paid / billed) * 100) : 0}%</span>
+      </div>
+    </div>
+
+    <div class="grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
+      <div class="card flat">
+        <div class="card-title" style="margin-bottom:12px;">🏢 Company Stages</div>
+        ${companyStageHtml}
+      </div>
+      <div class="card flat">
+        <div class="card-title" style="margin-bottom:12px;">👥 Candidate Stages</div>
+        ${candStageHtml}
+      </div>
+    </div>
+
+    <div class="card flat" style="margin-bottom:16px;">
+      <div class="card-title" style="margin-bottom:12px;">🏆 Top Performers</div>
+      ${topEmpHtml}
+    </div>
+
+    <div class="card flat">
+      <div class="card-title" style="margin-bottom:12px;">📤 Export</div>
+      <div class="row" style="gap:8px;flex-wrap:wrap;">
+        <button class="ghost sm" onclick="exportReportCSV('companies')">📥 Companies CSV</button>
+        <button class="ghost sm" onclick="exportReportCSV('candidates')">📥 Candidates CSV</button>
+        <button class="ghost sm" onclick="exportReportCSV('invoices')">📥 Invoices CSV</button>
+      </div>
+    </div>
+  `;
+}
+
+async function exportReportCSV(type) {
+  try {
+    let list = [];
+    if (type === 'companies') {
+      list = await fetchCompanies(500);
+      exportCompaniesCSV(list, 'companies-report-' + Date.now() + '.csv');
+    } else if (type === 'candidates') {
+      list = await fetchCandidates(500);
+      exportCandidatesCSV(list, 'candidates-report-' + Date.now() + '.csv');
+    } else if (type === 'invoices') {
+      list = await fetchInvoices(500);
+      exportInvoicesCSV(list);
+    }
+  } catch (e) {
+    console.error('Export failed:', e);
+    showToast('error', 'Export failed');
+  }
+}
+
+function exportInvoicesCSV(list) {
+  if (!list || !list.length) {
+    showToast('warning', 'No data');
+    return;
+  }
+
+  const headers = ['Code', 'Company', 'Invoice Date', 'Due Date', 'Subtotal', 'GST', 'Total', 'Paid', 'Balance', 'Status'];
+  let csv = headers.map(function(h) { return '"' + h + '"'; }).join(',') + '\n';
+
+  list.forEach(function(i) {
+    const row = [
+      i.code, i.companyName,
+      i.invoiceDate ? new Date(i.invoiceDate).toLocaleDateString('en-IN') : '',
+      i.dueDate ? new Date(i.dueDate).toLocaleDateString('en-IN') : '',
+      i.subtotal || 0, i.gstAmount || 0, i.totalAmount || 0, i.paidAmount || 0,
+      (i.totalAmount || 0) - (i.paidAmount || 0),
+      i.status || 'draft'
+    ];
+    csv += row.map(function(v) { return '"' + String(v || '').replace(/"/g, '""') + '"'; }).join(',') + '\n';
+  });
+
+  downloadFile(csv, 'invoices-report-' + Date.now() + '.csv', 'text/csv');
+  showToast('success', list.length + ' invoices exported');
+}
+
+/* === END PART 48 === */
     /* === START PART 43 === */
 /* ============================================================
    PAGE: CALENDAR
