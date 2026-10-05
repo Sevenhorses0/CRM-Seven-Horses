@@ -12183,7 +12183,7 @@ function renderCandidateDrawerActions(c) {
       '<label>Change Stage</label>' +
       '<select onchange="changeCandidateStage(\'' + c.id + '\', this.value)">' +
         '<option value="">— Choose stage —</option>' +
-        renderCandidateStageOptions(c.stage) +
+        renderCandidateDrawerStageOptions(c.stage) +
       '</select>' +
     '</div>' +
     '<div class="row" style="gap:6px;flex-wrap:wrap;">' +
@@ -12221,7 +12221,7 @@ function renderCandidateDrawerActions(c) {
 /* ============================================================
    STAGE OPTIONS (for candidate)
    ============================================================ */
-function renderCandidateStageOptions(current) {
+function renderCandidateDrawerStageOptions(current) {
   const stages = [
     ['pending', '⏳ Pending'],
     ['active', 'Active'],
