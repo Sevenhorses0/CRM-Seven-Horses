@@ -5376,10 +5376,21 @@ function renderPage(page, params) {
     html = renderNotFoundPage(page);
 }
 
-    content.innerHTML = html;
-
+    if (html && typeof html.then === 'function') {
+  html.then(function(resolved) {
+    content.innerHTML = resolved;
     if (typeof afterRenderPage === 'function') {
       afterRenderPage(page, params);
+    }
+  }).catch(function(err) {
+    console.error('Async render failed:', err);
+    content.innerHTML = '<div class="empty-state error"><div class="empty-icon">⚠️</div><div class="empty-title">Error</div></div>';
+  });
+} else {
+  content.innerHTML = html;
+  if (typeof afterRenderPage === 'function') {
+    afterRenderPage(page, params);
+  }
     }
 
   } catch (e) {
