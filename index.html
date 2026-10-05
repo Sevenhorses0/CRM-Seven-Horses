@@ -19710,31 +19710,73 @@ if (document.readyState === 'loading') {
 } else {
   setTimeout(initEmojiReplacer, 400);
 }
-  /* === INSTALL innerHTML PREPROCESSOR (no flash) === */
+  /* === INSTALL innerHTML PREPROCESSOR (DOM-safe, no flash) === */
 (function installIconPreprocessor() {
   if (window._iconPreprocessorInstalled) return;
   window._iconPreprocessorInstalled = true;
   if (!_emojiRegexGlobal) _buildEmojiRegex();
+  if (!_emojiRegexGlobal || !_emojiRegexSingle) return;
+
   const desc = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
   if (!desc || !desc.set) return;
   const origSet = desc.set;
   const origGet = desc.get;
+
+  function processHtml(html) {
+    if (typeof html !== 'string' || !html.length) return html;
+    _emojiRegexGlobal.lastIndex = 0;
+    if (!_emojiRegexGlobal.test(html)) return html;
+    try {
+      const temp = document.createElement('div');
+      origSet.call(temp, html);
+      const walker = document.createTreeWalker(temp, NodeFilter.SHOW_TEXT, null);
+      const textNodes = [];
+      let n;
+      while ((n = walker.nextNode())) {
+        if (n.nodeValue && _emojiRegexSingle.test(n.nodeValue)) {
+          textNodes.push(n);
+        }
+      }
+      if (!textNodes.length) return html;
+      textNodes.forEach(function(node) {
+        const text = node.nodeValue;
+        _emojiRegexGlobal.lastIndex = 0;
+        let match, lastIndex = 0, hasMatch = false;
+        const frags = [];
+        while ((match = _emojiRegexGlobal.exec(text)) !== null) {
+          hasMatch = true;
+          if (match.index > lastIndex) {
+            frags.push(document.createTextNode(text.slice(lastIndex, match.index)));
+          }
+          const ic = document.createElement('i');
+          ic.setAttribute('data-lucide', EMOJI_TO_ICON[match[0]]);
+          ic.className = 'sh-icon';
+          frags.push(ic);
+          lastIndex = match.index + match[0].length;
+        }
+        if (!hasMatch) return;
+        if (lastIndex < text.length) {
+          frags.push(document.createTextNode(text.slice(lastIndex)));
+        }
+        const p = node.parentNode;
+        if (!p) return;
+        frags.forEach(function(f) { p.insertBefore(f, node); });
+        p.removeChild(node);
+      });
+      return temp.innerHTML;
+    } catch (e) {
+      console.warn('icon preprocess failed:', e);
+      return html;
+    }
+  }
+
   Object.defineProperty(Element.prototype, 'innerHTML', {
     configurable: true,
     get: function() { return origGet.call(this); },
     set: function(html) {
-      if (typeof html === 'string' && html.length && _emojiRegexGlobal) {
-        _emojiRegexGlobal.lastIndex = 0;
-        if (_emojiRegexGlobal.test(html)) {
-          _emojiRegexGlobal.lastIndex = 0;
-          html = html.replace(_emojiRegexGlobal, function(match) {
-            const name = EMOJI_TO_ICON[match];
-            return name ? '<i data-lucide="' + name + '" class="sh-icon"></i>' : match;
-          });
-        }
-      }
-      origSet.call(this, html);
-      if (typeof html === 'string' && html.indexOf('data-lucide') !== -1 && window.lucide) {
+      const processed = processHtml(html);
+      origSet.call(this, processed);
+      if (typeof processed === 'string' && processed.indexOf('data-lucide') !== -1 && window.lucide) {
         setTimeout(function() {
           try { window.lucide.createIcons(); } catch (e) {}
         }, 0);
@@ -19742,7 +19784,6 @@ if (document.readyState === 'loading') {
     }
   });
 })();
-    
 /* === END INSTALL innerHTML PREPROCESSOR === */
 /* === END ICON REPLACER === */
 /* ============================================================
