@@ -42,7 +42,125 @@
        Chunks 2-10 populate this block in order.
        ═══════════════════════════════════════════════════════════ */
 
-    /* Chunk  2 → CSS Variables (:root) */
+     /* ═══════════════════════════════════════════════════════════
+   CHUNK 2 — CSS VARIABLES (Single Source of Truth)
+   Rule: No hardcoded colors/sizes anywhere else in the file.
+   All components must consume these tokens only.
+   ═══════════════════════════════════════════════════════════ */
+
+:root {
+  /* ─── NAVY (Primary — 60% UI) ─── */
+  --navy:        #0F1B2D;
+  --navy-light:  #1E3049;
+  --navy-dark:   #080F1A;
+
+  /* ─── GOLD (Accent — 10% UI) ─── */
+  --gold:        #C9A961;
+  --gold-light:  #E8B86A;
+  --gold-dark:   #A8853F;
+
+  /* ─── NEUTRALS (30% UI) ─── */
+  --white:       #FFFFFF;
+  --bg:          #F7F5F0;
+  --bg-subtle:   #FAF9F5;
+  --bg-card:     #FFFFFF;
+
+  /* ─── TEXT ─── */
+  --text-primary:   #0F1B2D;
+  --text-secondary: #5A6478;
+  --text-muted:     #8B96A8;
+  --text-inverse:   #FFFFFF;
+
+  /* ─── BORDERS (subtle gold tint) ─── */
+  --border:        #EAE3D2;
+  --border-light:  #F0EDE3;
+  --border-strong: #D4C9AE;
+
+  /* ─── STATUS ─── */
+  --success:    #10B981;
+  --success-bg: #ECFDF5;
+  --error:      #EF4444;
+  --error-bg:   #FEF2F2;
+  --warning:    #F59E0B;
+  --warning-bg: #FFFBEB;
+  --info:       #3B82F6;
+  --info-bg:    #EFF6FF;
+
+  /* ─── TYPOGRAPHY — Families ─── */
+  --font-serif: 'Playfair Display', Georgia, serif;
+  --font-sans:  'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* ─── TYPOGRAPHY — Sizes ─── */
+  --fs-4xl:  40px;   /* Hero */
+  --fs-3xl:  32px;   /* Page title */
+  --fs-2xl:  26px;   /* Mobile page */
+  --fs-xl:   22px;   /* Section */
+  --fs-lg:   18px;   /* Card title */
+  --fs-base: 14px;   /* Body */
+  --fs-sm:   13px;   /* Secondary */
+  --fs-xs:   12px;   /* Labels */
+  --fs-2xs:  11px;   /* Badges */
+  --fs-3xs:  10px;   /* Micro */
+
+  /* ─── TYPOGRAPHY — Weights ─── */
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+
+  /* ─── TYPOGRAPHY — Line Heights ─── */
+  --lh-heading: 1.15;
+  --lh-body:    1.55;
+  --lh-small:   1.5;
+  --lh-stats:   1.0;
+
+  /* ─── TYPOGRAPHY — Letter Spacing ─── */
+  --ls-heading:   -0.02em;
+  --ls-body:      -0.005em;
+  --ls-uppercase:  0.08em;
+
+  /* ─── SPACING (8px grid) ─── */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  24px;
+  --sp-6:  32px;
+  --sp-7:  48px;
+  --sp-8:  64px;
+
+  /* ─── BORDER RADIUS ─── */
+  --radius-sm:   4px;
+  --radius:      10px;
+  --radius-md:   12px;
+  --radius-lg:   16px;
+  --radius-xl:   20px;
+  --radius-full: 999px;
+
+  /* ─── SHADOWS (navy-based, low opacity) ─── */
+  --shadow-sm:   0 1px 3px rgba(15, 27, 45, 0.04);
+  --shadow:      0 4px 12px -2px rgba(15, 27, 45, 0.08);
+  --shadow-md:   0 8px 24px -4px rgba(15, 27, 45, 0.12);
+  --shadow-lg:   0 16px 40px -8px rgba(15, 27, 45, 0.16);
+  --shadow-gold: 0 8px 24px -6px rgba(201, 169, 97, 0.3);
+
+  /* ─── TRANSITIONS ─── */
+  --t-fast:   150ms;
+  --t-normal: 250ms;
+  --t-slow:   400ms;
+  --t-ease:   cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ─── LAYOUT DIMENSIONS ─── */
+  --sidebar-w:           250px;
+  --sidebar-w-collapsed: 64px;
+  --header-h:            60px;
+  --drawer-w:            560px;
+  --drawer-w-lg:         720px;
+  --drawer-w-xl:         900px;
+
+  /* ─── BREAKPOINTS (reference only — media queries use raw values) ─── */
+  /* mobile:  <480px  | tablet: 480-900px | desktop: >900px */
+}
     /* Chunk  3 → Reset + Base */
     /* Chunk  4 → Typography */
     /* Chunk  5 → Forms + Inputs */
