@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- ═══ META ═══ -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0F1B2D">
+  <meta name="description" content="Seven Horses CRM — Placement & Contract Staffing Management System">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="7H CRM">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="robots" content="noindex, nofollow">
+
+  <title>Seven Horses CRM</title>
+
+  <!-- ═══ PWA ═══ -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="assets/icons/icon-512.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="assets/icons/icon-192.png">
+
+  <!-- ═══ FONTS (Playfair + Inter) ═══ -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- ═══ FIREBASE SDK v10.12.2 (compat) ═══ -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+
+  <!-- ═══ UTILITIES (Excel / PDF / Icons) ═══ -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://unpkg.com/lucide@0.454.0/dist/umd/lucide.js"></script>
+
+  <style>
+    /* ═══════════════════════════════════════════════════════════
+       SEVEN HORSES CRM — STYLES
+       Chunks 2-10 populate this block in order.
+       ═══════════════════════════════════════════════════════════ */
+
+    /* Chunk  2 → CSS Variables (:root) */
+    /* Chunk  3 → Reset + Base */
+    /* Chunk  4 → Typography */
+    /* Chunk  5 → Forms + Inputs */
+    /* Chunk  6 → Buttons */
+    /* Chunk  7 → Cards + Badges + Chips */
+    /* Chunk  8 → Layout (Sidebar / Header / Grid) */
+    /* Chunk  9 → Modal / Drawer / Toast / Skeleton */
+    /* Chunk 10 → Components + Tables + Responsive */
+  </style>
+</head>
+
+<body>
+  <!-- ═══ APP SHELL ═══ -->
+  <div id="app">
+    <!-- Boot loader — visible until auth + router mount (Chunk 11+) -->
+    <div id="boot-loader" style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#F7F5F0;font-family:'Playfair Display',Georgia,serif;color:#0F1B2D;">
+      <div style="text-align:center;">
+        <div style="font-size:32px;font-weight:700;letter-spacing:-0.02em;line-height:1.15;">Seven Horses</div>
+        <div style="font-family:'Inter',-apple-system,sans-serif;font-size:13px;color:#8B96A8;margin-top:8px;letter-spacing:-0.005em;">CRM loading…</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ SCRIPTS ═══ -->
+  <!-- Chunks 11-60 populate core JS / services / pages / integrations -->
+
+  <script>
+    // ── Boot placeholder (replaced by core JS in Chunk 11) ──
+    console.log('[7H CRM] Shell loaded. CDN + fonts ready. Awaiting core JS chunks.');
+  </script>
+</body>
+</html>
