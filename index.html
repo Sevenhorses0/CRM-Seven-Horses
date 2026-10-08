@@ -4195,6 +4195,12 @@ const Router = (function () {
 
     // After hooks (attach listeners, lucide.createIcons, etc.)
     runAfterHooks();
+    
+// Call page-level after() hook (loads data, binds events)
+if (route && typeof route.after === 'function') {
+  try { await route.after(_params); }
+  catch (err) { console.error('[Router.after]', id, err); }
+  }
 
     // Restore previous scroll (if returning to same route with same params)
     restoreScroll(id);
