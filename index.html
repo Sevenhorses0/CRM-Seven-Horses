@@ -20153,15 +20153,15 @@ const LoginPage = (function () {
 
       /* ─── LEFT PANEL ─── */
       .login-left {
-        background: linear-gradient(150deg, #0B1420 0%, var(--navy) 45%, var(--navy-light) 100%);
-        color: var(--text-inverse);
-        padding: 40px 48px 24px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        position: relative;
-        overflow: hidden;
-      }
+  background: linear-gradient(150deg, #0B1420 0%, var(--navy) 45%, var(--navy-light) 100%);
+  color: var(--text-inverse);
+  padding: 40px 48px 96px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  position: relative;
+  overflow: hidden;
+}
       .login-left::before {
         content: "";
         position: absolute;
@@ -20268,33 +20268,28 @@ const LoginPage = (function () {
       }
 
       .login-footer-left {
-        position: absolute;
-        left: 48px;
-        right: 48px;
-        bottom: 24px;
-        padding-top: 24px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        font-size: 11px;
-        color: rgba(255,255,255,0.55);
-        position: relative;
-        z-index: 1;
-        flex-wrap: wrap;
-      }
-      .login-footer-left a { color: rgba(255,255,255,0.72); text-decoration: none; }
-      .login-footer-left a:hover { color: var(--gold-light); }
+  margin-top: 40px;
+  padding-top: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  position: relative;
+  z-index: 1;
+  flex-wrap: wrap;
+}
 
       /* ─── RIGHT PANEL ─── */
       .login-right {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 40px 32px;
-        position: relative;
-        overflow-y: auto;
-      }
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 32px 96px;
+  position: relative;
+  overflow-y: auto;
+}
 
       .login-card {
         width: 100%;
@@ -20471,7 +20466,7 @@ const LoginPage = (function () {
 
         <div class="login-right">
           <div class="login-card">
-            <div class="login-title">Sign in</div>
+            <div class="login-title">Sign in to ${Utils.escapeHtml(brandName)}</div>
             <div class="login-subtitle">Enter your credentials to continue</div>
 
             <div id="login-error" class="login-error" style="display:none;">
