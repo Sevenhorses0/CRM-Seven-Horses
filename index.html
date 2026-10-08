@@ -3993,10 +3993,15 @@ const Auth = (function () {
   function attachProfileListener(uid) {
     detachProfileListener();
     _profileUnsub = DB.watch(`${CONST.COLLECTIONS.USERS}/${uid}`, async (profile) => {
-      if (!profile || profile.isDeleted || profile.status === 'disabled') {
-        await logout();
-        return;
-      }
+      if (!profile) {
+  console.warn('[Auth.watch] Transient null profile — ignored');
+  return;
+}
+if (profile.isDeleted || profile.status === 'disabled' || profile.status === 'deactivated') {
+  console.warn('[Auth.watch] Profile terminated — signing out');
+  await logout();
+  return;
+}
       applyProfile(profile);
       if (STATE.ready && typeof _onChangeCb === 'function') _onChangeCb(STATE.profile);
     });
@@ -4027,10 +4032,11 @@ const Auth = (function () {
 await new Promise(r => setTimeout(r, 300));
         const profile = await loadProfile(user.uid);
         if (!profile) {
-          console.warn('[Auth] No profile — signing out');
-          await logout();
-          return;
-        }
+  console.warn('[Auth] No profile yet — deferring to renderer');
+  STATE.ready = true;
+  if (typeof cb === 'function') cb(user, null);
+  return;
+  }
         applyProfile(profile);
         attachProfileListener(user.uid);
         STATE.ready = true;
@@ -20689,13 +20695,36 @@ async function handleSubmit(e) {
 
   try {
     await Auth.login(emailToUse, password);
-    // Success — Auth.observe() will pick up and AppShell will mount
     // Persist identifier for convenience
-    try { localStorage.setItem('7h.lastIdentifier', emailToUse); } catch (_) {}
-    // Small delay so the button feedback shows
-    await new Promise(r => setTimeout(r, 250));
-    // Login succeeded; Boot/AppShell will swap screens automatically
-    console.log('[Login] Success:', emailToUse);
+try { localStorage.setItem('7h.lastIdentifier', emailToUse); } catch (_) {}
+
+// Button: show success state (prevents "stuck spinner" perception)
+setBtnLoading(btn, 'Signed in! Loading…');
+console.log('[Login] Success:', emailToUse);
+
+// Wait for AppShell to mount. Hard timeout: if 6s pass, reset button.
+const startedAt = Date.now();
+const TIMEOUT_MS = 6000;
+const waitForShell = () => {
+  // Success case — login page unmounts naturally with AppShell
+  const shell = document.getElementById('app-shell');
+  if (shell) {
+    console.log('[Login] AppShell mounted in ' + (Date.now() - startedAt) + 'ms');
+    return;
+  }
+  // Timeout case — reset button, sign out, show error
+  if (Date.now() - startedAt > TIMEOUT_MS) {
+    _loading = false;
+    setBtnLoading(btn, null);
+    showError('Sign-in succeeded but app did not load. Please refresh or contact admin.');
+    console.warn('[Login] AppShell mount timeout after ' + TIMEOUT_MS + 'ms');
+    try { STATE.auth.signOut(); } catch (_) {}
+    return;
+  }
+  // Keep polling
+  setTimeout(waitForShell, 150);
+};
+waitForShell();
   } catch (err) {
     _loading = false;
     setBtnLoading(btn, null);
@@ -20843,18 +20872,43 @@ function setBtnLoading(btn, label) {
 
 let _setupCheckCache = null; // avoid re-checking within session
 
+// Invalidate cache — call after setup / logout / user delete
+function invalidateSetupCache() {
+  _setupCheckCache = null;
+  console.log('[Setup.check] Cache invalidated');
+}
+window.__7H_invalidateSetupCache = invalidateSetupCache;
+
 async function hasAnyUser() {
   // Cache result for session — setup runs once
   if (_setupCheckCache !== null) return _setupCheckCache;
+
   try {
-    const rows = await DB.list(CONST.COLLECTIONS.USERS, { limit: 1 });
-    _setupCheckCache = rows.length > 0;
+    // Only MASTER role counts as "setup complete"
+    // Stale non-master docs from deleted auth users should not block setup
+    const rows = await DB.list(CONST.COLLECTIONS.USERS, {
+      where: [['primaryRole', '==', 'MASTER']],
+      limit: 1
+    });
+    if (rows.length > 0) {
+      _setupCheckCache = true;
+      return true;
+    }
+    // Fallback: check roles array (multi-role MASTER)
+    const all = await DB.list(CONST.COLLECTIONS.USERS, { limit: 50 });
+    const hasMaster = all.some(u =>
+      Array.isArray(u.roles)
+        ? u.roles.includes('MASTER')
+        : u.role === 'MASTER' || u.primaryRole === 'MASTER'
+    );
+    _setupCheckCache = hasMaster;
+    return hasMaster;
   } catch (err) {
     console.warn('[Setup.check] Failed:', err.message);
-    // On error, be safe — assume users exist (show login)
+    // On error, be safe → assume setup done → show login
     _setupCheckCache = true;
+    return true;
   }
-  return _setupCheckCache;
 }
 
 Boot.setRenderer(async (user, profile) => {
@@ -21227,10 +21281,46 @@ async function handleSubmit(e) {
     try { localStorage.setItem('7h.lastIdentifier', email); } catch (_) {}
 
     setBtnLoading(btn, 'Setup complete! Redirecting…');
-    await new Promise(r => setTimeout(r, 600));
+await new Promise(r => setTimeout(r, 400));
 
-    console.log('[Setup] Master account created:', email);
-    // Boot.setRenderer is listening to Auth.observe — will auto-switch to AppShell
+console.log('[Setup] Master account created:', email);
+
+// 1. Invalidate setup cache so login page takes over on next boot check
+if (typeof window.__7H_invalidateSetupCache === 'function') {
+  window.__7H_invalidateSetupCache();
+}
+
+// 2. Force sign-out (Firebase auto-signed-in on create)
+try {
+  await STATE.auth.signOut();
+} catch (e) {
+  console.warn('[Setup] Signout after create failed:', e.message);
+}
+
+// 3. Reset in-memory auth state
+STATE.user = null;
+STATE.profile = null;
+STATE.roles = [];
+STATE.permissions = {};
+STATE.primaryRole = null;
+STATE.ready = true;
+
+// 4. Success toast
+UI.toast({ message: 'Master account created. Please sign in.', type: 'success' });
+
+// 5. Remove setup screen + mount login (wait a tick for signOut propagate)
+try { unmount(); } catch (_) {}
+await new Promise(r => setTimeout(r, 300));
+
+if (!document.querySelector('.login-root')) {
+  try {
+    LoginPage.prefillLastIdentifier();
+    LoginPage.mount();
+  } catch (e) {
+    console.warn('[Setup] Login mount failed, reloading:', e.message);
+    location.reload();
+  }
+}
 
   } catch (err) {
     _loading = false;
