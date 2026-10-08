@@ -3653,7 +3653,7 @@ const DB = (function () {
 
 const Config = (function () {
   'use strict';
-
+const deepClone = Utils.deepClone;
   let _unsub = null;
 
   // ─────────────── DEEP MERGE ───────────────
