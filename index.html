@@ -21081,11 +21081,13 @@ const SetupPage = (function () {
 
   // ─── MOUNT ───
   function mount() {
-    ensureCSS();
-    const app = document.getElementById('app');
-    if (!app) { console.error('[Setup] #app not found'); return; }
-    app.innerHTML = render();
-    bindEvents();
+  // Ensure base login CSS is loaded (SetupPage reuses login-* classes)
+  try { LoginPage.render(); } catch (_) {}
+  ensureCSS();
+  const app = document.getElementById('app');
+  if (!app) { console.error('[Setup] #app not found'); return; }
+  app.innerHTML = render();
+  bindEvents();
     setTimeout(() => {
       const el = document.getElementById('setup-name');
       if (el) el.focus();
