@@ -20399,6 +20399,34 @@ const LoginPage = (function () {
         .login-brand .brand-text { font-size: 17px; }
         .login-tagline { font-size: 20px; }
       }
+      /* Extra compact — landscape mobile, very short viewports */
+@media (max-height: 500px) {
+  .login-left { padding: 16px 24px 56px; }
+  .login-brand .brand-mark { width: 32px; height: 32px; font-size: 14px; }
+  .login-brand .brand-text { font-size: 16px; }
+  .login-hero { margin-top: 6px; }
+  .login-tagline { font-size: 18px; margin-bottom: 4px; }
+  .login-subline { font-size: 10px; line-height: 1.3; }
+  .login-features { margin-top: 8px; gap: 6px; }
+  .login-feature { gap: 8px; }
+  .login-feature .feat-icon { width: 22px; height: 22px; }
+  .login-feature .feat-title { font-size: 11px; margin-bottom: 0; }
+  .login-feature .feat-desc { font-size: 9px; line-height: 1.2; }
+  .login-footer-left {
+    bottom: 10px;
+    left: 24px;
+    right: 24px;
+    font-size: 9px;
+  }
+  .login-right { padding: 16px; }
+  .login-title { font-size: 18px; margin-bottom: 2px; }
+  .login-subtitle { font-size: 10px; margin-bottom: 10px; }
+  .login-form { gap: 6px; }
+  .login-label { font-size: 9px; }
+  .login-input-wrap .input { height: 34px; padding: 6px 10px; font-size: 11px; }
+  .login-submit { height: 34px; font-size: 12px; }
+  .login-footer-right { margin-top: 12px; font-size: 9px; }
+  }
     `;
     document.head.appendChild(style);
   }
