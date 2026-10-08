@@ -20152,17 +20152,16 @@ const LoginPage = (function () {
         overflow-x: hidden;
       }
 
-      /* ─── LEFT PANEL ─── */
       .login-left {
   background: linear-gradient(150deg, #0B1420 0%, var(--navy) 45%, var(--navy-light) 100%);
   color: var(--text-inverse);
-  padding: 64px 48px 32px;
+  padding: 64px 48px 88px;
   display: flex;
   flex-direction: column;
-  justify-content: flex-start;
+  justify-content: center;
   position: relative;
   overflow: hidden;
-}
+  }
       .login-left::before {
         content: "";
         position: absolute;
@@ -20209,7 +20208,6 @@ const LoginPage = (function () {
       }
 
       .login-hero {
-        margin-top: 56px;
         position: relative;
         z-index: 1;
         max-width: 460px;
@@ -20269,15 +20267,16 @@ const LoginPage = (function () {
       }
 
       .login-footer-left {
-  margin-top: auto;
-  padding-top: 24px;
+  position: absolute;
+  bottom: 28px;
+  left: 48px;
+  right: 48px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
   font-size: 11px;
   color: rgba(255, 255, 255, 0.55);
-  position: relative;
   z-index: 1;
   flex-wrap: wrap;
 }
