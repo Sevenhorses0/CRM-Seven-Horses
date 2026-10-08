@@ -3915,17 +3915,29 @@ const Auth = (function () {
 
   // ─────────────── PROFILE LOADER ───────────────
   async function loadProfile(uid) {
-    const doc = await DB.get(`${CONST.COLLECTIONS.USERS}/${uid}`);
-    if (!doc) return null;
-    if (doc.isDeleted) {
-      console.warn('[Auth] User is soft-deleted');
-      return null;
+  // Retry up to 8 attempts, 400ms each (max ~3.2s)
+  // Handles race condition where auth fires before Firestore doc write completes
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      const doc = await DB.get(`${CONST.COLLECTIONS.USERS}/${uid}`);
+      if (doc) {
+        if (doc.isDeleted) {
+          console.warn('[Auth] User is soft-deleted');
+          return null;
+        }
+        if (doc.status === 'disabled' || doc.status === 'deactivated') {
+          console.warn('[Auth] User disabled');
+          return null;
+        }
+        return doc;
+      }
+    } catch (err) {
+      console.warn('[Auth.loadProfile] attempt ' + (attempt + 1) + ':', err.message);
     }
-    if (doc.status === 'disabled' || doc.status === 'deactivated') {
-      console.warn('[Auth] User disabled');
-      return null;
-    }
-    return doc;
+    if (attempt < 7) await new Promise(r => setTimeout(r, 400));
+  }
+  console.warn('[Auth] Profile not found after retries:', uid);
+  return null;
   }
 
   function applyProfile(profile) {
@@ -4011,6 +4023,8 @@ const Auth = (function () {
         return;
       }
       try {
+        // Small delay to allow any pending writes from login/setup to complete
+await new Promise(r => setTimeout(r, 300));
         const profile = await loadProfile(user.uid);
         if (!profile) {
           console.warn('[Auth] No profile — signing out');
