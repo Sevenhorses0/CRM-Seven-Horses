@@ -2938,8 +2938,43 @@ em, i     { font-style: italic; }
 /* ══════════════ END OF CSS FOUNDATION ══════════════ */
   </style>
 </head>
-
-<>
+<!-- DEBUG OVERLAY (temporary) -->
+<div id="debug-overlay" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#0F1B2D;color:#fff;font:11px/1.5 monospace;padding:12px;z-index:999999;max-height:70vh;overflow:auto;white-space:pre-wrap;border-top:3px solid #EF4444;"></div>
+<script>
+  (function(){
+    function show(msg){
+      var d = document.getElementById('debug-overlay');
+      if (!d) return;
+      d.style.display = 'block';
+      d.textContent += msg + '\n';
+    }
+    window.addEventListener('error', function(e){
+      show('ERR: ' + (e.message || 'error') + ' @ line ' + (e.lineno || '?'));
+    });
+    window.addEventListener('unhandledrejection', function(e){
+      var r = e.reason;
+      show('PROMISE: ' + ((r && (r.message || r.code)) || String(r)));
+    });
+    var checks = 0;
+    setInterval(function(){
+      checks++;
+      var boot = document.getElementById('boot-loader');
+      if (boot && !boot.classList.contains('is-hidden') && checks === 6) {
+        show('BOOT stuck at 3s');
+        try {
+          show('  STATE.booted=' + (window.STATE && STATE.booted));
+          show('  STATE.ready=' + (window.STATE && STATE.ready));
+          show('  STATE.user=' + !!(window.STATE && STATE.user));
+          show('  STATE.db=' + !!(window.STATE && STATE.db));
+          show('  Config=' + !!(window.STATE && STATE.config));
+          show('  Boot=' + (typeof window.Boot));
+          show('  Auth=' + (typeof window.Auth));
+        } catch(_) {}
+      }
+    }, 500);
+  })();
+</script>
+</body>
   <!-- ═══ APP SHELL ═══ -->
   <div id="app">
     <!-- Boot loader — visible until auth + router mount (Chunk 11+) -->
@@ -9571,275 +9606,7 @@ const Activity = (function () {
 
 console.log('[7H] Activity service ready');
 
-    // ═══════════════════════════════════════════════════════════
-//  AGGREGATES — Dashboard KPIs, role-wise card counts
-//  Rule: Sab aggregations yahan. Pages sirf call karenge.
-// ═══════════════════════════════════════════════════════════
-
-const Aggregates = (function () {
-  'use strict';
-
-  // ─────────────── PLACEMENT CLIENT DASHBOARD (8 cards) ───────────────
-  async function placementDashboard(companyId) {
-    if (!companyId) return emptyPlacement();
-    const [reqs, cands, invs, agrs] = await Promise.all([
-      DB.list(CONST.COLLECTIONS.REQUIREMENTS, { where: [['companyId','==',companyId]], limit: 500 }),
-      DB.list(CONST.COLLECTIONS.CANDIDATES,     { where: [['lockedToCompanyId','==',companyId]], limit: 500 }),
-      DB.list(CONST.COLLECTIONS.INVOICES,       { where: [['companyId','==',companyId], ['type','==','placement']], limit: 500 }),
-      DB.list(CONST.COLLECTIONS.AGREEMENTS,     { where: [['companyId','==',companyId], ['status','==','ACTIVE']], limit: 50 })
-    ]);
-    const openReqs    = reqs.filter(r => ['PENDING','APPROVED','SOURCING','SHORTLISTED','INTERVIEW'].includes(r.status)).length;
-    const candsSent   = cands.length;
-    const interviews  = cands.filter(c => c.stage === 'INTERVIEW').length;
-    const placed      = cands.filter(c => c.stage === 'PLACED').length;
-    const pendingFB   = 0; // filled by feedback service later
-    const pendingInv  = invs.filter(i => ['SENT','PARTIAL','OVERDUE'].includes(i.status)).length;
-    const activeAgr   = agrs.length;
-    return {
-      openRequirements: openReqs,
-      candidatesSent:   candsSent,
-      interviews,
-      placed,
-      pendingFeedback:  pendingFB,
-      pendingInvoices:  pendingInv,
-      activeAgreements: activeAgr
-    };
-  }
-
-  function emptyPlacement() {
-    return { openRequirements:0, candidatesSent:0, interviews:0, placed:0,
-             pendingFeedback:0, pendingInvoices:0, activeAgreements:0 };
-  }
-
-  // ─────────────── CONTRACT CLIENT DASHBOARD (8 cards) ───────────────
-  async function contractDashboard(companyId) {
-    if (!companyId) return emptyContract();
-    const staff = await DB.list(CONST.COLLECTIONS.CONTRACT_STAFF, {
-      where: [['companyId','==',companyId]], limit: 1000
-    });
-    const active = staff.filter(s => s.status === 'ACTIVE');
-    const supervisors = new Set(staff.map(s => s.supervisorId).filter(Boolean));
-
-    // Today's attendance %
-    const today = new Date().toISOString().slice(0, 10);
-    const att = await DB.list(CONST.COLLECTIONS.ATTENDANCE, {
-      where: [['companyId','==',companyId], ['date','==',today]], limit: 1000
-    }).catch(() => []);
-    const present = att.filter(a => a.status === 'P' || a.status === 'WO' || a.status === 'HO').length;
-    const total   = active.length || 1;
-    const attPct  = Math.round((present / total) * 100);
-
-    // Monthly bill (using rates)
-    let monthlyBill = 0;
-    for (const s of active) monthlyBill += Number(s.monthlyRate) || 0;
-
-    return {
-      activeStaff:      active.length,
-      attendancePct:    attPct,
-      monthlyBill,
-      supervisors:      supervisors.size,
-      pendingFeedback:  0,
-      pendingInvoices:  0,   // filled by invoices service
-      activeAgreements: 0,
-      notifications:    0
-    };
-  }
-
-  function emptyContract() {
-    return { activeStaff:0, attendancePct:0, monthlyBill:0, supervisors:0,
-             pendingFeedback:0, pendingInvoices:0, activeAgreements:0, notifications:0 };
-  }
-
-  // ─────────────── CRM INTERNAL DASHBOARD ───────────────
-  async function crmDashboard(roleScope = {}) {
-    const uid = STATE.user?.uid;
-    const ownerFilter = roleScope.ownerId || null;
-
-    const [companies, candidates, tasks, invoices, chats] = await Promise.all([
-      DB.list(CONST.COLLECTIONS.COMPANIES, ownerFilter
-        ? { where: [['ownerId','==',ownerFilter]], limit: 500 }
-        : { limit: 500 }),
-      DB.list(CONST.COLLECTIONS.CANDIDATES, ownerFilter
-        ? { where: [['assignedToEmployeeId','==',ownerFilter]], limit: 500 }
-        : { limit: 500 }),
-      uid ? DB.list(CONST.COLLECTIONS.TASKS, {
-        where: [['assignedTo','==',uid], ['completed','==',false]], limit: 200
-      }) : Promise.resolve([]),
-      DB.list(CONST.COLLECTIONS.INVOICES, {
-        where: [['status','in',['SENT','PARTIAL','OVERDUE']]], limit: 500
-      }),
-      uid ? DB.list(CONST.COLLECTIONS.CHATS, {
-        where: [['members','array-contains',uid]], limit: 100
-      }) : Promise.resolve([])
-    ]);
-
-    const totalCandidates = candidates.length;
-    const activeCandidates = candidates.filter(c => c.stage === 'ACTIVE').length;
-    const placedCandidates = candidates.filter(c => c.stage === 'PLACED').length;
-    const totalCompanies   = companies.length;
-    const clientCompanies  = companies.filter(c => c.stage === 'CLIENT').length;
-    const openTasks        = tasks.length;
-    const overdueTasks     = tasks.filter(t => t.dueDate && t.dueDate.slice(0,10) < new Date().toISOString().slice(0,10)).length;
-    const pendingInvoices  = invoices.length;
-
-    let unreadChats = 0;
-    for (const c of chats) {
-      unreadChats += Number((c.unreadBy || {})[uid]) || 0;
-    }
-
-    return {
-      totalCompanies, clientCompanies,
-      totalCandidates, activeCandidates, placedCandidates,
-      openTasks, overdueTasks,
-      pendingInvoices,
-      unreadChats
-    };
-  }
-
-  // ─────────────── COMPANY KPI HELPERS ───────────────
-  async function companyOverview(companyId) {
-    const [comp, reqs, cands, invs, contracts] = await Promise.all([
-      DB.get(`${CONST.COLLECTIONS.COMPANIES}/${companyId}`),
-      DB.list(CONST.COLLECTIONS.REQUIREMENTS, { where:[['companyId','==',companyId]], limit: 200 }),
-      DB.list(CONST.COLLECTIONS.CANDIDATES,   { where:[['lockedToCompanyId','==',companyId]], limit: 500 }),
-      DB.list(CONST.COLLECTIONS.INVOICES,     { where:[['companyId','==',companyId]], limit: 500 }),
-      DB.list(CONST.COLLECTIONS.CONTRACT_STAFF,{ where:[['companyId','==',companyId]], limit: 500 })
-    ]);
-    const billedTotal = invs.reduce((s,i) => s + Number(i.total||0), 0);
-    const paidTotal   = invs.reduce((s,i) => s + Number(i.paidAmount||0), 0);
-    const balanceTotal= invs.reduce((s,i) => s + Number(i.balance||0), 0);
-    return {
-      company: comp,
-      requirements: { total: reqs.length, open: reqs.filter(r => !['CLOSED','REJECTED'].includes(r.status)).length },
-      candidates:   { total: cands.length, placed: cands.filter(c => c.stage === 'PLACED').length },
-      invoices:     { total: invs.length, billedTotal, paidTotal, balanceTotal },
-      contracts:    { total: contracts.length, active: contracts.filter(c => c.status === 'ACTIVE').length }
-    };
-  }
-
-  return {
-    placementDashboard, contractDashboard, crmDashboard,
-    companyOverview
-  };
-})();
-
-console.log('[7H] Aggregates ready');
-
-// ═══════════════════════════════════════════════════════════
-//  FU TRACKER — Daily FU due list + reminders
-//  Reminders: in-app notification only. Employee sends manually.
-// ═══════════════════════════════════════════════════════════
-
-const FUTracker = (function () {
-  'use strict';
-
-  const COL = CONST.COLLECTIONS.INQUIRIES;
-
-  // All FU due today / overdue
-  async function dueList(ownerId = null) {
-    const where = [['fuManual','==',false]];
-    if (ownerId) where.push(['ownerId','==',ownerId]);
-    const rows = await DB.list(COL, { where, limit: 500 });
-
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const out = { overdue: [], today: [], upcoming: [] };
-    for (const r of rows) {
-      if (['CONVERTED','LOST'].includes(r.stage)) continue;
-      if (!r.fuNextAt) continue;
-      const due = r.fuNextAt.slice(0, 10);
-      if (due < todayStr) out.overdue.push(r);
-      else if (due === todayStr) out.today.push(r);
-      else out.upcoming.push(r);
-    }
-    return out;
-  }
-
-  // Schedule 9 AM reminder (called from boot daily check)
-  async function scheduleDailyReminders() {
-    const uid = STATE.user?.uid;
-    if (!uid) return 0;
-    const due = await dueList(uid);
-    const count = due.overdue.length + due.today.length;
-    if (count === 0) return 0;
-
-    try {
-      await Notifications.notify({
-        userId: uid,
-        type: 'task.due',
-        title: `Follow-ups pending (${count})`,
-        message: `${due.overdue.length} overdue · ${due.today.length} today`,
-        data: { kind: 'fu-daily', overdue: due.overdue.length, today: due.today.length }
-      });
-    } catch (_) {}
-    return count;
-  }
-
-  // D-7 + D-1 archive notices (client inactivity)
-  async function findInactiveClients(days = 365) {
-    const cutoff = Date.now() - days * 86400000;
-    const companies = await DB.list(CONST.COLLECTIONS.COMPANIES, {
-      where: [['stage','==','CLIENT']], limit: 500
-    });
-    const out = [];
-    for (const c of companies) {
-      const last = c.lastActivityAt?.toMillis ? c.lastActivityAt.toMillis()
-                 : c.lastActivityAt ? new Date(c.lastActivityAt).getTime() : 0;
-      if (last && last < cutoff) out.push(c);
-    }
-    return out;
-  }
-
-  return {
-    dueList,
-    scheduleDailyReminders,
-    findInactiveClients
-  };
-})();
-
-console.log('[7H] FU Tracker ready');
-
-// ═══════════════════════════════════════════════════════════
-//  ACTIVITY LOG SERVICE — cross-collection feed reader
-// ═══════════════════════════════════════════════════════════
-
-const Activity = (function () {
-  'use strict';
-
-  const COL = CONST.COLLECTIONS.ACTIVITY;
-
-  async function list(filters = {}) {
-    const opts = { orderBy: ['at','desc'] };
-    const where = [];
-    if (filters.type)   where.push(['type','==',filters.type]);
-    if (filters.userId) where.push(['by','==',filters.userId]);
-    if (filters.since)  where.push(['at','>=',filters.since]);
-    if (where.length) opts.where = where;
-    opts.limit = filters.limit || 100;
-    return DB.list(COL, opts);
-  }
-
-  async function listForTarget(type, id, limit = 50) {
-    const key = type + 'Id';
-    return DB.list(COL, {
-      where: [[key,'==',id]],
-      orderBy: ['at','desc'],
-      limit
-    });
-  }
-
-  async function log(entry) {
-    return DB.add(COL, {
-      ...entry,
-      at: DB.ts(),
-      by: STATE.user?.uid || null
-    });
-  }
-
-  return { list, listForTarget, log };
-})();
-
-console.log('[7H] Activity service ready');
-</script>
+  </script>
 
   <!-- ═══════════════════════════════════════════════════════════
      PAGES — Chunks 31-55
