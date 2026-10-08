@@ -20158,6 +20158,7 @@ const LoginPage = (function () {
         padding: 40px 48px 24px;
         display: flex;
         flex-direction: column;
+        justify-content: center;
         position: relative;
         overflow: hidden;
       }
@@ -20267,7 +20268,10 @@ const LoginPage = (function () {
       }
 
       .login-footer-left {
-        margin-top: auto;
+        position: absolute;
+        left: 48px;
+        right: 48px;
+        bottom: 24px;
         padding-top: 24px;
         display: flex;
         justify-content: space-between;
@@ -20374,22 +20378,30 @@ const LoginPage = (function () {
 
       /* ─── MOBILE ─── */
       @media (max-width: 900px) {
-        .login-root { grid-template-columns: 1fr; }
-        .login-left {
-          padding: 20px 22px;
-          min-height: auto;
-        }
-        .login-left::before,
-        .login-left::after { display: none; }
-        .login-hero { margin-top: 20px; }
-        .login-tagline { font-size: 22px; margin-bottom: 6px; }
-        .login-subline { font-size: 12px; }
-        .login-features { display: none; }
-        .login-footer-left { display: none; }
-        .login-right { padding: 24px 20px 40px; align-items: flex-start; }
-        .login-card { max-width: 100%; }
-        .login-title { font-size: 24px; }
-      }
+  .login-root {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  .login-left {
+    padding: 24px 22px;
+    min-height: auto;
+    justify-content: flex-start;
+    flex-shrink: 0;
+  }
+  .login-left::before,
+  .login-left::after { display: none; }
+  .login-hero { margin-top: 16px; }
+  .login-tagline { font-size: 24px; margin-bottom: 6px; }
+  .login-subline { font-size: 13px; }
+  .login-features { display: none; }
+  .login-footer-left { display: none; }
+  .login-right { padding: 24px 20px 40px; align-items: flex-start; min-height: auto; }
+  .login-card { max-width: 100%; }
+  .login-title { font-size: 24px; }
+}
       @media (max-width: 480px) {
         .login-brand .brand-mark { width: 40px; height: 40px; font-size: 16px; }
         .login-brand .brand-text { font-size: 17px; }
