@@ -20821,23 +20821,49 @@ function setBtnLoading(btn, label) {
 })();
 
 // ═══════════════════════════════════════════════════════════
-//  BOOT INTEGRATION
-//  Replace Boot.setRenderer's placeholder with LoginPage mount
-//  when user is not signed in.
+//  BOOT INTEGRATION — Login vs Setup (auto-switch)
+//  1. Users collection empty? → SetupPage
+//  2. Users exist?              → LoginPage
+//  3. Signed in?                → AppShell
 // ═══════════════════════════════════════════════════════════
 
-Boot.setRenderer((user, profile) => {
-  // Signed in with profile → shell
+let _setupCheckCache = null; // avoid re-checking within session
+
+async function hasAnyUser() {
+  // Cache result for session — setup runs once
+  if (_setupCheckCache !== null) return _setupCheckCache;
+  try {
+    const rows = await DB.list(CONST.COLLECTIONS.USERS, { limit: 1 });
+    _setupCheckCache = rows.length > 0;
+  } catch (err) {
+    console.warn('[Setup.check] Failed:', err.message);
+    // On error, be safe — assume users exist (show login)
+    _setupCheckCache = true;
+  }
+  return _setupCheckCache;
+}
+
+Boot.setRenderer(async (user, profile) => {
+  // ─── Case 1: Signed in with profile → AppShell ───
   if (user && profile) {
-    // Ensure any existing login screen is removed
     LoginPage.unmount();
-    // Mount shell (idempotent — Chunk 20 handles re-entry)
+    SetupPage.unmount();
     AppShell.mount(user, profile);
     return;
   }
 
-  // Not signed in (or profile missing) → login screen
-  // Show login only if we're not already showing it
+  // ─── Case 2: Not signed in → check for setup vs login ───
+  const usersExist = await hasAnyUser();
+
+  if (!usersExist) {
+    // First run — show Setup page
+    if (!document.querySelector('.login-root')) {
+      SetupPage.mount();
+    }
+    return;
+  }
+
+  // Normal case — show Login page
   if (!document.querySelector('.login-root')) {
     LoginPage.prefillLastIdentifier();
     LoginPage.mount();
@@ -20862,6 +20888,402 @@ window.addEventListener('7h:logged-out', () => {
 window.__7H_Login = LoginPage;
 
 console.log('[7H] Login page ready');
+
+          // ═══════════════════════════════════════════════════════════
+//  SETUP PAGE — First-time master account creation
+//  Shows when Firestore `users` collection is empty.
+//  Once a MASTER exists, login page takes over.
+// ═══════════════════════════════════════════════════════════
+
+const SetupPage = (function () {
+  'use strict';
+
+  const SETUP_KEY = 'SEVEN-HORSES-2026';
+  let _loading = false;
+
+  // ─── CSS (reuses login classes, adds setup-specific bits) ───
+  function ensureCSS() {
+    if (document.getElementById('setup-css')) return;
+    const style = document.createElement('style');
+    style.id = 'setup-css';
+    style.textContent = `
+      .setup-card { width: 100%; max-width: 440px; }
+      .setup-header { margin-bottom: 24px; }
+      .setup-title {
+        font-family: var(--font-serif);
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        line-height: 1.15;
+        color: var(--text-primary);
+        margin-bottom: 6px;
+      }
+      .setup-subtitle { font-size: 13px; color: var(--text-muted); }
+      .setup-form { display: flex; flex-direction: column; gap: 14px; }
+      .setup-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        background: rgba(201, 169, 97, 0.12);
+        border: 1px solid rgba(201, 169, 97, 0.3);
+        border-radius: var(--radius-full);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--gold-dark);
+        margin-bottom: 12px;
+      }
+      .setup-error {
+        padding: 10px 14px;
+        background: var(--error-bg);
+        border: 1px solid rgba(239, 68, 68, 0.25);
+        border-radius: var(--radius);
+        font-size: 12px;
+        color: var(--error);
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        margin-bottom: 8px;
+      }
+      @media (max-width: 600px) {
+        .setup-title { font-size: 24px; }
+        .setup-card { max-width: 100%; }
+      }
+      @media (max-height: 500px) {
+        .setup-title { font-size: 20px; margin-bottom: 4px; }
+        .setup-subtitle { font-size: 11px; }
+        .setup-form { gap: 10px; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  // ─── RENDER ───
+  function render() {
+    ensureCSS();
+
+    const c = Config.get('company', {}) || {};
+    const loginCfg = Config.get('ui.login', {}) || {};
+
+    const brandName = c.name || APP.name;
+    const brandMark = c.short || APP.short;
+    const tagline = c.tagline || 'Workforce Solutions,\nDelivered.';
+    const subline = loginCfg.subline ||
+      'Placement & contract staffing — managed end-to-end. Trusted by teams across India.';
+
+    const features = Array.isArray(loginCfg.features) && loginCfg.features.length
+      ? loginCfg.features
+      : [
+          { icon: 'trophy',  title: 'Trusted partner',   desc: 'Skilled & semi-skilled workforce, pan-India' },
+          { icon: 'users',   title: 'Smart matching',    desc: '7-layer match engine surfaces the right candidates' },
+          { icon: 'factory', title: 'Contract staffing', desc: 'Monthly recurring with attendance-driven billing' },
+          { icon: 'shield',  title: '40-day warranty',   desc: 'Free replacement guarantee on every placement' }
+        ];
+
+    const featuresHtml = features.map(f => `
+      <div class="login-feature">
+        <div class="feat-icon">${UIKIT.icon(f.icon || 'sparkles', 15)}</div>
+        <div>
+          <div class="feat-title">${Utils.escapeHtml(f.title || '')}</div>
+          <div class="feat-desc">${Utils.escapeHtml(f.desc || '')}</div>
+        </div>
+      </div>
+    `).join('');
+
+    const footerText = loginCfg.footer || ('© ' + new Date().getFullYear() + ' ' + (c.legalName || APP.fullName));
+    const taglineHtml = Utils.escapeHtml(tagline).replace(/\n/g, '<br>');
+
+    return `
+      <div class="login-root">
+        <div class="login-left">
+          <div class="login-brand">
+            <div class="brand-mark">${Utils.escapeHtml(brandMark)}</div>
+            <div class="brand-text">${Utils.escapeHtml(brandName)}</div>
+          </div>
+
+          <div class="login-hero">
+            <div class="login-tagline">${taglineHtml}</div>
+            <div class="login-subline">${Utils.escapeHtml(subline)}</div>
+          </div>
+
+          <div class="login-features">${featuresHtml}</div>
+
+          <div class="login-footer-left">
+            <span>${Utils.escapeHtml(footerText)}</span>
+            <span>Made with 🐎 in India</span>
+          </div>
+        </div>
+
+        <div class="login-right">
+          <div class="setup-card">
+            <div class="setup-header">
+              <div class="setup-badge">${UIKIT.icon('sparkles', 11)} First-time setup</div>
+              <div class="setup-title">Welcome to Seven Horses</div>
+              <div class="setup-subtitle">Set up your master account to begin</div>
+            </div>
+
+            <div id="setup-error" class="setup-error" style="display:none;">
+              ${UIKIT.icon('alert-circle', 14)}
+              <span id="setup-error-msg"></span>
+            </div>
+
+            <form id="setup-form" class="setup-form" autocomplete="on">
+              <div class="login-input-wrap">
+                <label class="login-label" for="setup-name">Full Name</label>
+                <input id="setup-name" class="input" type="text" name="name" required placeholder="Your full name" autocomplete="name">
+              </div>
+
+              <div class="login-input-wrap">
+                <label class="login-label" for="setup-email">Email</label>
+                <input id="setup-email" class="input" type="email" name="email" required placeholder="you@company.com" autocomplete="email">
+              </div>
+
+              <div class="login-input-wrap">
+                <label class="login-label" for="setup-phone">Phone</label>
+                <input id="setup-phone" class="input" type="tel" name="phone" required placeholder="9876543210" autocomplete="tel">
+              </div>
+
+              <div class="login-input-wrap">
+                <label class="login-label" for="setup-password">Password</label>
+                <div class="input-group">
+                  <input id="setup-password" class="input" type="password" name="password" required minlength="8" placeholder="Min 8 characters" autocomplete="new-password" style="padding-right:44px;">
+                  <button type="button" class="input-toggle" id="setup-toggle-pwd" aria-label="Show password">
+                    ${UIKIT.icon('eye', 16)}
+                  </button>
+                </div>
+              </div>
+
+              <div class="login-input-wrap">
+                <label class="login-label" for="setup-confirm">Confirm Password</label>
+                <input id="setup-confirm" class="input" type="password" name="confirm" required placeholder="Re-enter password" autocomplete="new-password">
+              </div>
+
+              <div class="login-input-wrap">
+                <label class="login-label" for="setup-key">Setup Key</label>
+                <input id="setup-key" class="input" type="text" name="setupKey" required placeholder="Enter setup key" autocomplete="off">
+              </div>
+
+              <button type="submit" class="btn btn-primary login-submit" id="setup-submit">
+                <span>Create Master Account</span>
+              </button>
+            </form>
+
+            <div class="login-footer-right">
+              Protected by Firebase Auth<br>
+              This account will have full <strong>MASTER</strong> access
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // ─── MOUNT ───
+  function mount() {
+    ensureCSS();
+    const app = document.getElementById('app');
+    if (!app) { console.error('[Setup] #app not found'); return; }
+    app.innerHTML = render();
+    bindEvents();
+    setTimeout(() => {
+      const el = document.getElementById('setup-name');
+      if (el) el.focus();
+    }, 150);
+    if (typeof lucide !== 'undefined' && lucide.createIcons) {
+      try { lucide.createIcons(); } catch (_) {}
+    }
+  }
+
+  function unmount() {
+    const root = document.querySelector('.login-root');
+    if (root) root.remove();
+  }
+
+  // ─── EVENTS (placeholder — logic Chunk 54 me) ───
+  function bindEvents() {
+    const toggle = document.getElementById('setup-toggle-pwd');
+    if (toggle) {
+      toggle.addEventListener('click', () => {
+        const pwd = document.getElementById('setup-password');
+        if (!pwd) return;
+        const isHidden = pwd.type === 'password';
+        pwd.type = isHidden ? 'text' : 'password';
+        toggle.innerHTML = UIKIT.icon(isHidden ? 'eye-off' : 'eye', 16);
+        if (typeof lucide !== 'undefined' && lucide.createIcons) {
+          try { lucide.createIcons(); } catch (_) {}
+        }
+      });
+    }
+
+      // ─── Form submit ───
+  const form = document.getElementById('setup-form');
+  if (form) {
+    form.addEventListener('submit', handleSubmit);
+  }
+
+  // Phone input: digits only
+  const phoneInput = document.getElementById('setup-phone');
+  if (phoneInput) {
+    phoneInput.addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 10);
+    });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SETUP FLOW
+// ═══════════════════════════════════════════════════════════
+
+async function handleSubmit(e) {
+  e.preventDefault();
+  if (_loading) return;
+
+  const nameEl = document.getElementById('setup-name');
+  const emailEl = document.getElementById('setup-email');
+  const phoneEl = document.getElementById('setup-phone');
+  const pwdEl = document.getElementById('setup-password');
+  const confirmEl = document.getElementById('setup-confirm');
+  const keyEl = document.getElementById('setup-key');
+  const btn = document.getElementById('setup-submit');
+
+  if (!nameEl || !emailEl || !phoneEl || !pwdEl || !confirmEl || !keyEl || !btn) return;
+
+  const name = nameEl.value.trim();
+  const email = Utils.normalizeEmail(emailEl.value);
+  const phone = Utils.normalizePhone(phoneEl.value);
+  const password = pwdEl.value;
+  const confirm = confirmEl.value;
+  const setupKey = keyEl.value.trim();
+
+  hideError();
+
+  // ─── Validation ───
+  if (name.length < 2) { showError('Please enter your full name (min 2 chars)'); nameEl.focus(); return; }
+  if (!Utils.isEmail(email)) { showError('Please enter a valid email address'); emailEl.focus(); return; }
+  if (!Utils.isPhone(phone)) { showError('Please enter a valid 10-digit phone (starts 6-9)'); phoneEl.focus(); return; }
+  if (password.length < 8) { showError('Password must be at least 8 characters'); pwdEl.focus(); return; }
+  if (password !== confirm) { showError('Passwords do not match'); confirmEl.focus(); return; }
+  if (setupKey !== SETUP_KEY) { showError('Invalid setup key. Please check and try again.'); keyEl.focus(); return; }
+
+  _loading = true;
+  setBtnLoading(btn, 'Creating your account…');
+
+  try {
+    // 1. Create Firebase Auth user
+    const cred = await STATE.auth.createUserWithEmailAndPassword(email, password);
+    const uid = cred.user.uid;
+
+    // 2. Update display name
+    try { await cred.user.updateProfile({ displayName: name }); } catch (_) {}
+
+    // 3. Create Firestore user doc — MASTER role
+    const userDoc = {
+      uid,
+      name,
+      email,
+      phone,
+      roles: ['MASTER'],
+      primaryRole: 'MASTER',
+      status: 'active',
+      activeApp: 'crm',
+      onboardingDone: false,
+      createdAt: DB.ts(),
+      updatedAt: DB.ts(),
+      createdBy: uid,
+      setupCompletedAt: DB.ts(),
+      dupKeys: { email, phone }
+    };
+    await DB.set(`${CONST.COLLECTIONS.USERS}/${uid}`, userDoc, false);
+
+    // 4. Audit log
+    try {
+      await DB.add(CONST.COLLECTIONS.AUDIT, {
+        type: 'system',
+        action: 'setup:master-created',
+        meta: { email, name },
+        at: DB.ts(),
+        by: uid
+      });
+    } catch (_) {}
+
+    // 5. Success — Auth.observe() will pick up user doc + mount AppShell
+    try { localStorage.setItem('7h.lastIdentifier', email); } catch (_) {}
+
+    setBtnLoading(btn, 'Setup complete! Redirecting…');
+    await new Promise(r => setTimeout(r, 600));
+
+    console.log('[Setup] Master account created:', email);
+    // Boot.setRenderer is listening to Auth.observe — will auto-switch to AppShell
+
+  } catch (err) {
+    _loading = false;
+    setBtnLoading(btn, null);
+    showError(normalizeSetupError(err));
+    if (pwdEl) { pwdEl.value = ''; pwdEl.focus(); }
+    if (confirmEl) confirmEl.value = '';
+  }
+}
+
+// ─── Error normalization ───
+function normalizeSetupError(err) {
+  const code = (err && err.code) || '';
+  const map = {
+    'auth/email-already-in-use':   'An account with this email already exists. Try signing in instead.',
+    'auth/invalid-email':          'Please enter a valid email address.',
+    'auth/weak-password':          'Password is too weak. Use at least 8 characters.',
+    'auth/network-request-failed': 'Network issue. Please check your connection.',
+    'auth/operation-not-allowed':  'Sign-up method not enabled. Contact admin.',
+    'auth/too-many-requests':      'Too many attempts. Please try again in a few minutes.'
+  };
+  return map[code] || (err && err.message) || 'Setup failed. Please try again.';
+}
+
+// ─── Show / hide error ───
+function showError(msg) {
+  const box = document.getElementById('setup-error');
+  const txt = document.getElementById('setup-error-msg');
+  if (!box || !txt) return;
+  txt.textContent = msg || 'Something went wrong';
+  box.style.display = 'flex';
+  box.animate(
+    [{ transform: 'translateX(0)' }, { transform: 'translateX(-4px)' },
+     { transform: 'translateX(4px)' }, { transform: 'translateX(0)' }],
+    { duration: 220, easing: 'ease-in-out' }
+  );
+}
+
+function hideError() {
+  const box = document.getElementById('setup-error');
+  if (box) box.style.display = 'none';
+}
+
+// ─── Button loading state ───
+function setBtnLoading(btn, label) {
+  if (!btn) return;
+  if (label === null) {
+    btn.disabled = false;
+    btn.classList.remove('is-loading');
+    btn.innerHTML = '<span>Create Master Account</span>';
+  } else {
+    btn.disabled = true;
+    btn.classList.add('is-loading');
+    btn.innerHTML = `${UIKIT.icon('loader-2', 16, 'btn-icon')}<span>${Utils.escapeHtml(label)}</span>`;
+  }
+  if (typeof lucide !== 'undefined' && lucide.createIcons) {
+    try { lucide.createIcons(); } catch (_) {}
+  }
+  }
+
+  return {
+    mount,
+    unmount,
+    render,
+    SETUP_KEY
+  };
+})();
+
+console.log('[7H] Setup page ready');
 </script>
 </body>
 </html>
