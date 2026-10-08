@@ -4003,7 +4003,7 @@ if (profile.isDeleted || profile.status === 'disabled' || profile.status === 'de
   return;
 }
       applyProfile(profile);
-      if (STATE.ready && typeof _onChangeCb === 'function') _onChangeCb(STATE.profile);
+      _onChangeCb(STATE.user, STATE.profile);
     });
   }
 
