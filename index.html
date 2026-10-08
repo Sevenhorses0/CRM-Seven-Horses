@@ -20148,7 +20148,8 @@ const LoginPage = (function () {
         grid-template-columns: minmax(380px, 1fr) minmax(420px, 1.1fr);
         background: var(--bg);
         z-index: 500;
-        overflow: hidden;
+        overflow-y: auto;
+        overflow-x: hidden;
       }
 
       /* ─── LEFT PANEL ─── */
@@ -20288,7 +20289,6 @@ const LoginPage = (function () {
   justify-content: center;
   padding: 40px 32px 96px;
   position: relative;
-  overflow-y: auto;
 }
 
       .login-card {
@@ -20376,8 +20376,6 @@ const LoginPage = (function () {
   .login-root {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr;
-    overflow-y: auto;
-    overflow-x: hidden;
     -webkit-overflow-scrolling: touch;
   }
   .login-left {
