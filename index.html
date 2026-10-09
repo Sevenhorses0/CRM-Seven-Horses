@@ -3611,20 +3611,70 @@ const DB = (function () {
 
   // DB.watchList("companies", { where:[...], orderBy:[...], limit:20 }, arr => {...})
   function watchList(collection, options, cb) {
-    let q = colRef(collection);
-    if (Array.isArray(options.where)) {
-      for (const w of options.where) q = q.where(...w);
+    const opts = options || {};
+
+    // Parse orderBy
+    let orderField = null;
+    let orderDir = 'asc';
+    if (opts.orderBy) {
+      const [f, d = 'asc'] = Array.isArray(opts.orderBy)
+        ? opts.orderBy : [opts.orderBy];
+      orderField = f;
+      orderDir = d;
     }
-    if (options.orderBy) {
-      const [f, d = 'asc'] = Array.isArray(options.orderBy)
-        ? options.orderBy : [options.orderBy];
-      q = q.orderBy(f, d);
+
+    function buildQuery(includeOrderBy) {
+      let q = colRef(collection);
+      if (Array.isArray(opts.where)) {
+        for (const w of opts.where) q = q.where(...w);
+      }
+      if (includeOrderBy && opts.orderBy) {
+        const [f, d = 'asc'] = Array.isArray(opts.orderBy)
+          ? opts.orderBy : [opts.orderBy];
+        q = q.orderBy(f, d);
+      }
+      if (opts.limit) q = q.limit(opts.limit);
+      return q;
     }
-    if (options.limit) q = q.limit(options.limit);
-    return q.onSnapshot(
-      snap => cb(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
-      err => console.error('[DB.watchList]', collection, err)
+
+    let primaryUnsub = null;
+    let fallbackUnsub = null;
+    let switched = false;
+
+    const primaryQ = buildQuery(true);
+    primaryUnsub = primaryQ.onSnapshot(
+      snap => {
+        if (switched) return; // fallback took over
+        cb(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      },
+      err => {
+        const msg = String(err && err.message || '');
+        const isIndexErr = err && (err.code === 'failed-precondition' ||
+          /requires an index|index.*required/i.test(msg));
+        if (!isIndexErr || !orderField) {
+          console.error('[DB.watchList]', collection, err);
+          return;
+        }
+        console.warn('[DB.watchList] Missing index for', collection, '- using client-side sort');
+        switched = true;
+        if (primaryUnsub) { try { primaryUnsub(); } catch (_) {} }
+
+        const fallbackQ = buildQuery(false);
+        fallbackUnsub = fallbackQ.onSnapshot(
+          snap => {
+            let rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            rows = _clientSort(rows, orderField, orderDir);
+            cb(rows);
+          },
+          err2 => console.error('[DB.watchList] fallback', collection, err2)
+        );
+      }
     );
+
+    return function unsubscribe() {
+      if (primaryUnsub) { try { primaryUnsub(); } catch (_) {} }
+      if (fallbackUnsub) { try { fallbackUnsub(); } catch (_) {} }
+    };
   }
 
   // ─────────────── BATCH (atomic multi-write) ───────────────
