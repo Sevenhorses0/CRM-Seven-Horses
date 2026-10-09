@@ -5086,35 +5086,60 @@ const AppShell = (function () {
   // Nav config — role filters applied at render time.
   // Page IDs will be registered in later chunks (21+).
   const NAV = [
-    { section: 'Main' },
-    { id: 'dashboard',   label: 'Dashboard',    icon: 'layout-dashboard' },
-    { id: 'companies',   label: 'Companies',    icon: 'building-2',   badge: 'companies' },
-    { id: 'candidates',  label: 'Candidates',   icon: 'users',        badge: 'candidates' },
-    { id: 'requirements',label: 'Requirements', icon: 'clipboard-list' },
-    { section: 'Work' },
-    { id: 'tasks',       label: 'Tasks',        icon: 'check-square', badge: 'tasks' },
-    { id: 'calendar',    label: 'Calendar',     icon: 'calendar' },
-    { id: 'chat',        label: 'Chat',         icon: 'message-circle', badge: 'chats' },
-    { section: 'Finance' },
-    { id: 'invoices',    label: 'Invoices',     icon: 'file-text' },
-    { id: 'payments',    label: 'Payments',     icon: 'wallet' },
-    { section: 'Insights' },
-    { id: 'reports',     label: 'Reports',      icon: 'bar-chart-3' },
-    { id: 'audit',       label: 'Audit Log',    icon: 'history' },
-    { section: 'Admin' },
-    { id: 'employees',   label: 'Team',         icon: 'user-cog' },
-    { id: 'settings',    label: 'Settings',     icon: 'settings' }
-  ];
-
+  { section: 'Main' },
+  { id: 'dashboard',   label: 'Dashboard',     icon: 'layout-dashboard' },
+  { id: 'companies',   label: 'Companies',     icon: 'building-2',     badge: 'companies' },
+  { id: 'candidates',  label: 'Candidates',    icon: 'users',          badge: 'candidates' },
+  { id: 'requirements',label: 'Requirements',  icon: 'clipboard-list' },
+  { section: 'Work' },
+  { id: 'tasks',       label: 'Tasks',         icon: 'check-square',   badge: 'tasks' },
+  { id: 'calendar',    label: 'Calendar',      icon: 'calendar' },
+  { id: 'contract',    label: 'Contract Staff',icon: 'factory' },
+  { id: 'attendance',  label: 'Attendance',    icon: 'calendar-check' },
+  { id: 'chat',        label: 'Chat',          icon: 'message-circle', badge: 'chats' },
+  { section: 'Finance' },
+  { id: 'invoices',    label: 'Invoices',      icon: 'file-text' },
+  { id: 'payments',    label: 'Payments',      icon: 'wallet' },
+  { id: 'payroll',     label: 'Payroll',       icon: 'banknote' },
+  { section: 'Insights' },
+  { id: 'reports',     label: 'Reports',       icon: 'bar-chart-3' },
+  { id: 'audit',       label: 'Audit Log',     icon: 'history' },
+  { section: 'Admin' },
+  { id: 'employees',   label: 'Team',          icon: 'user-cog' },
+  { id: 'settings',    label: 'Settings',      icon: 'settings' }
+];
   // Per-role visibility (empty = show to all authenticated CRM users)
-  const ROLE_VISIBLE = {
-    MASTER: ['dashboard','settings','audit','reports'],
-    ADMIN:  ['dashboard','companies','candidates','requirements','tasks','calendar','chat','invoices','payments','reports','audit','employees','settings'],
-    MANAGER:['dashboard','companies','candidates','requirements','tasks','calendar','chat','reports','audit','employees'],
-    EMPLOYEE:['dashboard','companies','candidates','requirements','tasks','calendar','chat'],
-    INTERNAL_SUPERVISOR: ['dashboard','tasks','chat'],
-    EXTERNAL_SUPERVISOR: ['dashboard']
-  };
+  // ─── Default role → visible nav mapping (fallback) ───
+const ROLE_VISIBLE_DEFAULTS = {
+  MASTER: ['dashboard','companies','candidates','requirements','tasks','calendar','contract','attendance','chat','invoices','payments','payroll','reports','audit','employees','settings'],
+  ADMIN:  ['dashboard','companies','candidates','requirements','tasks','calendar','contract','attendance','chat','invoices','payments','payroll','reports','audit','employees','settings'],
+  MANAGER:['dashboard','companies','candidates','requirements','tasks','calendar','contract','attendance','chat','reports','audit','employees'],
+  EMPLOYEE:['dashboard','companies','candidates','requirements','tasks','calendar','attendance','chat'],
+  INTERNAL_SUPERVISOR: ['dashboard','attendance','tasks','chat'],
+  EXTERNAL_SUPERVISOR: ['dashboard','attendance']
+};
+
+// ─── Read merged map (config override wins over defaults) ───
+// MASTER can edit `settings/config.rolesMeta` later — this auto-merges.
+// Custom roles added to rolesMeta (not in defaults) are automatically picked up.
+function getRoleVisibleMap() {
+  const merged = { ...ROLE_VISIBLE_DEFAULTS };
+  try {
+    const custom = STATE.config?.rolesMeta;
+    if (custom && typeof custom === 'object') {
+      for (const [role, data] of Object.entries(custom)) {
+        if (data && Array.isArray(data.visibleNav)) {
+          merged[role] = data.visibleNav;
+        }
+        // New role entirely (not in defaults): also honor its label/icon later
+        if (data && !merged[role] && Array.isArray(data.visibleNav)) {
+          merged[role] = data.visibleNav;
+        }
+      }
+    }
+  } catch (_) {}
+  return merged;
+  }
 
   let _root = null;
   let _mounted = false;
@@ -5123,8 +5148,9 @@ const AppShell = (function () {
   function visibleNav() {
     const roles = STATE.roles || [];
     const allow = new Set();
-    for (const r of roles) {
-      (ROLE_VISIBLE[r] || []).forEach(id => allow.add(id));
+const roleMap = getRoleVisibleMap();
+for (const r of roles) {
+  (roleMap[r] || []).forEach(id => allow.add(id));
     }
     if (STATE.permissions && STATE.permissions.all) {
       // MASTER sees everything
