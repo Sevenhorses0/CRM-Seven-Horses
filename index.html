@@ -2938,43 +2938,7 @@ em, i     { font-style: italic; }
 /* ══════════════ END OF CSS FOUNDATION ══════════════ */
   </style>
 </head>
-<!-- DEBUG OVERLAY (temporary) -->
-<div id="debug-overlay" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#0F1B2D;color:#fff;font:11px/1.5 monospace;padding:12px;z-index:999999;max-height:70vh;overflow:auto;white-space:pre-wrap;border-top:3px solid #EF4444;"></div>
-<script>
-  (function(){
-    function show(msg){
-      var d = document.getElementById('debug-overlay');
-      if (!d) return;
-      d.style.display = 'block';
-      d.textContent += msg + '\n';
-    }
-    window.addEventListener('error', function(e){
-      show('ERR: ' + (e.message || 'error') + ' @ line ' + (e.lineno || '?'));
-    });
-    window.addEventListener('unhandledrejection', function(e){
-      var r = e.reason;
-      show('PROMISE: ' + ((r && (r.message || r.code)) || String(r)));
-    });
-    var checks = 0;
-    setInterval(function(){
-      checks++;
-      var boot = document.getElementById('boot-loader');
-      if (boot && !boot.classList.contains('is-hidden') && checks === 6) {
-        show('BOOT stuck at 3s');
-        try {
-          show('  STATE.booted=' + (window.STATE && STATE.booted));
-          show('  STATE.ready=' + (window.STATE && STATE.ready));
-          show('  STATE.user=' + !!(window.STATE && STATE.user));
-          show('  STATE.db=' + !!(window.STATE && STATE.db));
-          show('  Config=' + !!(window.STATE && STATE.config));
-          show('  Boot=' + (typeof window.Boot));
-          show('  Auth=' + (typeof window.Auth));
-        } catch(_) {}
-      }
-    }, 500);
-  })();
-</script>
-</body>
+  
   <!-- ═══ APP SHELL ═══ -->
   <div id="app">
     <!-- Boot loader — visible until auth + router mount (Chunk 11+) -->
@@ -3489,19 +3453,88 @@ const DB = (function () {
       if (Array.isArray(options.where)) {
         for (const w of options.where) q = q.where(...w);
       }
+      // Parse orderBy
+      let orderField = null;
+      let orderDir = 'asc';
       if (options.orderBy) {
         const [f, d = 'asc'] = Array.isArray(options.orderBy)
           ? options.orderBy : [options.orderBy];
+        orderField = f;
+        orderDir = d;
         q = q.orderBy(f, d);
       }
       if (options.limit) q = q.limit(options.limit);
       if (options.startAfter) q = q.startAfter(options.startAfter);
-      const snap = await q.get();
-      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+      try {
+        const snap = await q.get();
+        return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      } catch (err) {
+        // Composite index missing → retry without orderBy, sort client-side
+        const msg = String(err && err.message || '');
+        const isIndexErr = err && (err.code === 'failed-precondition' ||
+          /requires an index|index.*required/i.test(msg));
+        if (!isIndexErr || !orderField) {
+          console.error('[DB.list]', collection, err);
+          throw err;
+        }
+        console.warn('[DB.list] Missing index for', collection, '- using client-side sort');
+        // Rebuild query without orderBy
+        let q2 = colRef(collection);
+        if (Array.isArray(options.where)) {
+          for (const w of options.where) q2 = q2.where(...w);
+        }
+        if (options.limit) q2 = q2.limit(options.limit);
+        const snap2 = await q2.get();
+        let rows = snap2.docs.map(d => ({ id: d.id, ...d.data() }));
+        rows = _clientSort(rows, orderField, orderDir);
+        return rows;
+      }
     } catch (err) {
       console.error('[DB.list]', collection, err);
       throw err;
     }
+  }
+
+  // Safe client-side sort for nested paths + timestamps + mixed types
+  function _getPath(obj, path) {
+    if (!path) return undefined;
+    const parts = String(path).split('.');
+    let cur = obj;
+    for (const p of parts) {
+      if (cur == null) return undefined;
+      cur = cur[p];
+    }
+    return cur;
+  }
+
+  function _toSortable(v) {
+    if (v == null) return null;
+    if (typeof v === 'object') {
+      if (typeof v.toMillis === 'function') return v.toMillis();
+      if (typeof v.seconds === 'number') return v.seconds * 1000 + (v.nanoseconds || 0) / 1e6;
+      if (v instanceof Date) return v.getTime();
+    }
+    if (typeof v === 'number') return v;
+    if (typeof v === 'string') {
+      const t = Date.parse(v);
+      return isNaN(t) ? v : t;
+    }
+    return v;
+  }
+
+  function _clientSort(rows, field, dir) {
+    const sign = dir === 'desc' ? -1 : 1;
+    return [...rows].sort((a, b) => {
+      const av = _toSortable(_getPath(a, field));
+      const bv = _toSortable(_getPath(b, field));
+      if (av == null && bv == null) return 0;
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (av < bv) return -1 * sign;
+      if (av > bv) return 1 * sign;
+      return 0;
+    });
   }
 
   // ─────────────── WRITE ───────────────
@@ -18230,7 +18263,7 @@ const Onboarding = (function () {
   function tipRow(icon, title, sub) {
     return `
       <div style="display:flex;gap:10px;align-items:center;padding:8px 10px;">
-        <span style="color:var(--gold-dark);">${UIKIT.icon(icon.toLowerCase(), 16)}</span>
+        <span style="color:var(--gold-dark);">${UIKIT.icon(icon.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase(), 16)}</span>
         <div style="flex:1;min-width:0;">
           <div style="font-size:13px;font-weight:600;color:var(--text-primary);">${Utils.escapeHtml(title)}</div>
           <div style="font-size:11px;color:var(--text-muted);margin-top:1px;">${Utils.escapeHtml(sub)}</div>
