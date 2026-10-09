@@ -20594,6 +20594,9 @@ const LoginPage = (function () {
 // ═══════════════════════════════════════════════════════════
 
 function mount() {
+  // Reset transient state (singleton IIFE — state persists across mounts)
+  _loading = false;
+
   ensureCSS();
   const app = document.getElementById('app');
   if (!app) { console.error('[Login] #app not found'); return; }
