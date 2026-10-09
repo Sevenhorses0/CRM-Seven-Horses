@@ -5388,25 +5388,6 @@ for (const r of roles) {
   return { mount, unmount, refreshNav, closeSidebar };
 })();
 
-// ─────────────── PLUG APP SHELL INTO BOOT ───────────────
-Boot.setRenderer((user, profile) => {
-  if (!user || !profile) {
-    // Placeholder login UI (real login page arrives later)
-    const app = document.getElementById('app');
-    if (app) {
-      app.innerHTML = `
-        <div style="min-height:100vh;display:grid;grid-template-columns:1fr;align-items:center;justify-items:center;background:var(--bg);">
-          <div class="card" style="max-width:420px;width:90%;text-align:center;">
-            <h1 style="font-family:var(--font-serif);font-size:var(--fs-3xl);letter-spacing:-0.02em;margin-bottom:8px;">Seven Horses</h1>
-            <p class="text-muted" style="font-size:var(--fs-sm);">CRM ready · Login screen arrives in a later chunk.</p>
-          </div>
-        </div>`;
-    }
-    return;
-  }
-  AppShell.mount(user, profile);
-});
-
   </script>
  <!-- ═══ SERVICES — Chunks 21-30 ═══ -->
   <script>
@@ -6006,6 +5987,25 @@ const Candidates = (function () {
     }, cb);
   }
 
+function watchList(filters, cb) {
+  const opts = {
+    orderBy: ['updatedAt', 'desc'],
+    limit: (filters && filters.limit) || 100
+  };
+  const where = [];
+  if (filters) {
+    if (filters.stage) where.push(['stage', '==', filters.stage]);
+    if (filters.stages) where.push(['stage', 'in', filters.stages]);
+    if (filters.city) where.push(['city', '==', filters.city]);
+    if (filters.jobProfile) where.push(['jobProfile', '==', filters.jobProfile]);
+    if (filters.lockedToCompanyId) where.push(['lockedToCompanyId', '==', filters.lockedToCompanyId]);
+    if (filters.poolEligible !== undefined) where.push(['poolEligible', '==', filters.poolEligible]);
+    if (filters.isDeleted !== undefined) where.push(['isDeleted', '==', filters.isDeleted]);
+  }
+  if (where.length) opts.where = where;
+  return DB.watchList(COL, opts, cb);
+                   }
+  
   // ─────────────── PUBLIC API ───────────────
   return {
     create, getById, list, commonPool, search,
@@ -6014,7 +6014,7 @@ const Candidates = (function () {
     holdAtCompany, extendHold, releaseFromHold,
     softDelete, restore,
     checkDuplicate, computeScore,
-    watch, watchPool,
+    watch, watchPool, watchList,
     STAGES: CONST.CANDIDATE_STAGES
   };
 })();
@@ -20952,8 +20952,15 @@ Boot.setRenderer(async (user, profile) => {
     return;
   }
 
-  // ─── Case 2: Not signed in → check for setup vs login ───
-  const usersExist = await hasAnyUser();
+  // ─── Case 2: Not signed in → cleanup + check for setup vs login ───
+
+// Unmount AppShell if it was mounted (logout case)
+// Prevents DOM leak + stale Firestore listeners
+if (typeof AppShell !== 'undefined' && AppShell.unmount) {
+  try { AppShell.unmount(); } catch (_) {}
+}
+
+const usersExist = await hasAnyUser();
 
   if (!usersExist) {
     // First run — show Setup page
